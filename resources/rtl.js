@@ -6,6 +6,17 @@
             left: auto !important;
         }
 
+        .aislash-editor-input p,
+        .aislash-editor-input-readonly p {
+            unicode-bidi: plaintext !important;
+            text-align: start !important;
+        }
+
+        .composer-rendered-message .composer-human-message div:has(> div > .aislash-editor-input-readonly),
+        .composer-rendered-message .composer-human-message div:has(> div > .aislash-editor-input) {
+            flex-grow: 1 !important;
+        }
+
         .markdown-root ul,
         .markdown-root ol,
         .markdown-lexical-editor-container ul,
@@ -123,7 +134,6 @@
         '.markdown-section',
         '.composer-human-message p',
         '.composer-human-message div',
-        '.composer-human-message span',
         '.aislash-editor-input p',
         '.aislash-editor-input-readonly p',
         '.aislash-editor-placeholder',
