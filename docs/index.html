@@ -1,0 +1,526 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Cursor RTL - Smart Multi-Language RTL Support</title>
+<meta name="description" content="Smart multi-language RTL support for Cursor AI Chat. Auto-detects text direction per element - Hebrew, Arabic and Persian text is right-aligned while English stays left-aligned.">
+<meta name="theme-color" content="#0a0a1a">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>↗</text></svg>">
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+
+:root {
+  --bg-primary: #0a0a1a;
+  --bg-secondary: #111127;
+  --bg-card: rgba(255,255,255,0.04);
+  --border-card: rgba(255,255,255,0.08);
+  --text-primary: #e8e8f0;
+  --text-secondary: #9090b0;
+  --accent-1: #00e5c8;
+  --accent-2: #b44aff;
+  --accent-gradient: linear-gradient(135deg, var(--accent-1), var(--accent-2));
+  --font: 'Segoe UI', system-ui, -apple-system, sans-serif;
+  --radius: 12px;
+  --max-width: 1080px;
+}
+
+html { scroll-behavior: smooth }
+
+body {
+  font-family: var(--font);
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  line-height: 1.6;
+  min-height: 100vh;
+  overflow-x: hidden;
+}
+
+a { color: var(--accent-1); text-decoration: none; transition: opacity 0.2s }
+a:hover { opacity: 0.8 }
+
+/* ===== Background glow ===== */
+.bg-glow {
+  position: fixed; inset: 0; z-index: -1; pointer-events: none;
+  background:
+    radial-gradient(ellipse 600px 400px at 20% 20%, rgba(0,229,200,0.07), transparent),
+    radial-gradient(ellipse 500px 500px at 80% 60%, rgba(180,74,255,0.06), transparent);
+}
+
+/* ===== Language switcher ===== */
+.lang-bar {
+  position: fixed; top: 0; inset-inline: 0; z-index: 100;
+  display: flex; justify-content: center; gap: 4px;
+  padding: 10px 16px;
+  background: rgba(10,10,26,0.85);
+  backdrop-filter: blur(12px);
+  border-bottom: 1px solid var(--border-card);
+}
+.lang-btn {
+  background: transparent; border: 1px solid transparent;
+  color: var(--text-secondary); font-size: 14px; padding: 5px 14px;
+  border-radius: 20px; cursor: pointer; transition: all 0.2s;
+  font-family: var(--font);
+}
+.lang-btn:hover { color: var(--text-primary); border-color: var(--border-card) }
+.lang-btn.active {
+  color: var(--accent-1);
+  border-color: var(--accent-1);
+  background: rgba(0,229,200,0.08);
+}
+
+/* ===== Container ===== */
+.container { max-width: var(--max-width); margin: 0 auto; padding: 0 24px }
+
+/* ===== Hero ===== */
+.hero {
+  padding-block-start: 120px;
+  padding-block-end: 80px;
+  text-align: center;
+}
+.hero-badge {
+  display: inline-block;
+  padding: 6px 16px;
+  border-radius: 20px;
+  border: 1px solid var(--border-card);
+  background: var(--bg-card);
+  color: var(--text-secondary);
+  font-size: 13px;
+  margin-block-end: 24px;
+  letter-spacing: 0.5px;
+}
+.hero h1 {
+  font-size: clamp(2.2rem, 5vw, 3.6rem);
+  font-weight: 700;
+  line-height: 1.15;
+  margin-block-end: 20px;
+}
+.hero h1 .gradient-text {
+  background: var(--accent-gradient);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+.hero-sub {
+  font-size: clamp(1rem, 2.5vw, 1.2rem);
+  color: var(--text-secondary);
+  max-width: 600px;
+  margin: 0 auto 40px;
+}
+.hero-buttons {
+  display: flex; gap: 14px;
+  justify-content: center;
+  flex-wrap: wrap;
+}
+.btn {
+  display: inline-flex; align-items: center; gap: 8px;
+  padding: 12px 28px;
+  border-radius: 8px;
+  font-size: 15px;
+  font-weight: 600;
+  font-family: var(--font);
+  cursor: pointer;
+  transition: transform 0.15s, box-shadow 0.2s;
+  border: none;
+}
+.btn:hover { transform: translateY(-1px) }
+.btn-primary {
+  background: var(--accent-gradient);
+  color: #0a0a1a;
+  box-shadow: 0 4px 20px rgba(0,229,200,0.2);
+}
+.btn-primary:hover { box-shadow: 0 6px 30px rgba(0,229,200,0.3) }
+.btn-secondary {
+  background: var(--bg-card);
+  color: var(--text-primary);
+  border: 1px solid var(--border-card);
+}
+.btn-secondary:hover { border-color: rgba(255,255,255,0.2) }
+
+/* ===== Features ===== */
+.features {
+  padding-block: 60px;
+}
+.section-label {
+  text-align: center;
+  font-size: 13px;
+  text-transform: uppercase;
+  letter-spacing: 2px;
+  color: var(--accent-1);
+  margin-block-end: 12px;
+}
+.section-title {
+  text-align: center;
+  font-size: clamp(1.5rem, 3vw, 2rem);
+  font-weight: 700;
+  margin-block-end: 48px;
+}
+.features-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 20px;
+}
+.feature-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border-card);
+  border-radius: var(--radius);
+  padding: 32px 28px;
+  transition: border-color 0.3s, transform 0.2s;
+}
+.feature-card:hover {
+  border-color: rgba(255,255,255,0.15);
+  transform: translateY(-2px);
+}
+.feature-icon {
+  font-size: 28px;
+  margin-block-end: 16px;
+}
+.feature-card h3 {
+  font-size: 1.1rem;
+  margin-block-end: 10px;
+}
+.feature-card p {
+  color: var(--text-secondary);
+  font-size: 0.92rem;
+  line-height: 1.55;
+}
+
+/* ===== Install ===== */
+.install {
+  padding-block: 60px;
+}
+.steps {
+  max-width: 560px;
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+.step {
+  display: flex;
+  align-items: flex-start;
+  gap: 18px;
+}
+.step-num {
+  flex-shrink: 0;
+  width: 36px; height: 36px;
+  display: flex; align-items: center; justify-content: center;
+  border-radius: 50%;
+  background: var(--accent-gradient);
+  color: #0a0a1a;
+  font-weight: 700;
+  font-size: 15px;
+}
+.step-content h4 {
+  font-size: 1rem;
+  margin-block-end: 4px;
+}
+.step-content p {
+  color: var(--text-secondary);
+  font-size: 0.9rem;
+}
+.step-content code {
+  display: inline-block;
+  background: rgba(255,255,255,0.06);
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-size: 0.85rem;
+  color: var(--accent-1);
+  font-family: 'Cascadia Code', 'Fira Code', monospace;
+  direction: ltr;
+}
+
+/* ===== Footer ===== */
+.footer {
+  padding-block: 40px;
+  text-align: center;
+  border-top: 1px solid var(--border-card);
+  margin-block-start: 40px;
+}
+.footer p {
+  color: var(--text-secondary);
+  font-size: 0.85rem;
+}
+.footer a { color: var(--accent-1) }
+
+/* ===== Animations ===== */
+.fade-in {
+  opacity: 0;
+  transform: translateY(20px);
+  transition: opacity 0.6s ease, transform 0.6s ease;
+}
+.fade-in.visible {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+/* ===== Responsive ===== */
+@media (max-width: 640px) {
+  .hero { padding-block-start: 100px; padding-block-end: 50px }
+  .features-grid { grid-template-columns: 1fr }
+  .hero-buttons { flex-direction: column; align-items: center }
+  .btn { width: 100%; max-width: 280px; justify-content: center }
+  .lang-bar { gap: 2px; padding: 8px 8px }
+  .lang-btn { font-size: 13px; padding: 4px 10px }
+}
+
+/* ===== RTL adjustments ===== */
+[dir="rtl"] .step { flex-direction: row }
+[dir="rtl"] code { direction: ltr; unicode-bidi: isolate }
+</style>
+</head>
+<body>
+
+<div class="bg-glow"></div>
+
+<!-- Language Switcher -->
+<nav class="lang-bar" role="navigation" aria-label="Language">
+  <button class="lang-btn" data-lang="en">EN</button>
+  <button class="lang-btn active" data-lang="he">עברית</button>
+  <button class="lang-btn" data-lang="ar">العربية</button>
+  <button class="lang-btn" data-lang="fa">فارسی</button>
+</nav>
+
+<!-- Hero -->
+<section class="hero">
+  <div class="container">
+    <div class="fade-in">
+      <span class="hero-badge" data-i18n="badge">תוסף קוד פתוח</span>
+      <h1><span class="gradient-text" data-i18n="title">Cursor RTL</span></h1>
+      <p class="hero-sub" data-i18n="tagline">תמיכת RTL רב-לשונית חכמה ל-Cursor AI Chat. אלגוריתם ייעודי מזהה אוטומטית את כיוון הטקסט לכל אלמנט — טקסט בעברית מיושר לימין, אנגלית נשארת לשמאל.</p>
+      <div class="hero-buttons">
+        <a href="https://github.com/motcke/cursor-ext-rtl/releases" class="btn btn-primary" data-i18n="download">⬇ הורדת VSIX</a>
+        <a href="https://github.com/motcke/cursor-ext-rtl" class="btn btn-secondary" data-i18n="github">★ צפייה ב-GitHub</a>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- Features -->
+<section class="features">
+  <div class="container">
+    <div class="fade-in">
+      <p class="section-label" data-i18n="featuresLabel">תכונות</p>
+      <h2 class="section-title" data-i18n="featuresTitle">נבנה עבור מפתחים רב-לשוניים</h2>
+    </div>
+    <div class="features-grid">
+      <div class="feature-card fade-in">
+        <div class="feature-icon">⚡</div>
+        <h3 data-i18n="f1Title">התקנה בלחיצה אחת</h3>
+        <p data-i18n="f1Desc">הפעלה או כיבוי תמיכת RTL מלוח הפקודות בפקודה אחת. ללא עריכה ידנית של קבצים.</p>
+      </div>
+      <div class="feature-card fade-in">
+        <div class="feature-icon">🔤</div>
+        <h3 data-i18n="f2Title">זיהוי אוטומטי חכם</h3>
+        <p data-i18n="f2Desc">כל פסקה מנותחת בנפרד. טקסט בעברית, ערבית ופרסית מיושר לימין, אנגלית נשארת לשמאל. שיחות מעורבות פשוט עובדות.</p>
+      </div>
+      <div class="feature-card fade-in">
+        <div class="feature-icon">🔄</div>
+        <h3 data-i18n="f3Title">שורד עדכונים</h3>
+        <p data-i18n="f3Desc">מזהה כשעדכוני Cursor דורסים את התיקון ומציע להחיל מחדש אוטומטית. ההגדרות שלך נשארות.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- Install -->
+<section class="install">
+  <div class="container">
+    <div class="fade-in">
+      <p class="section-label" data-i18n="installLabel">התחלה</p>
+      <h2 class="section-title" data-i18n="installTitle">התקנה ב-4 צעדים</h2>
+    </div>
+    <div class="steps fade-in">
+      <div class="step">
+        <span class="step-num">1</span>
+        <div class="step-content">
+          <h4 data-i18n="s1Title">הורדה</h4>
+          <p data-i18n-html="s1Desc">הורידו את ה-<code>.vsix</code> האחרון מ<a href="https://github.com/motcke/cursor-ext-rtl/releases">דף ה-Releases</a>.</p>
+        </div>
+      </div>
+      <div class="step">
+        <span class="step-num">2</span>
+        <div class="step-content">
+          <h4 data-i18n="s2Title">התקנת התוסף</h4>
+          <p data-i18n-html="s2Desc">פתחו את תצוגת התוספים (<code>Ctrl+Shift+X</code>) → לחצו על תפריט <code>...</code> → בחרו <strong>Install from VSIX...</strong> → בחרו את הקובץ שהורדתם.</p>
+        </div>
+      </div>
+      <div class="step">
+        <span class="step-num">3</span>
+        <div class="step-content">
+          <h4 data-i18n="s3Title">הפעלת RTL</h4>
+          <p data-i18n-html="s3Desc">חפשו את <strong>RTL: OFF</strong> בצד ימין של שורת המצב התחתונה → לחצו → בחרו <strong>Enable RTL</strong>.</p>
+        </div>
+      </div>
+      <div class="step">
+        <span class="step-num">4</span>
+        <div class="step-content">
+          <h4 data-i18n="s4Title">הפעלה מחדש</h4>
+          <p data-i18n-html="s4Desc">אשרו את ההתקנה → סגרו ופתחו מחדש את <strong>כל</strong> חלונות Cursor.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- Footer -->
+<footer class="footer">
+  <div class="container">
+    <p data-i18n-html="footer">רישיון Apache 2.0 · <a href="https://github.com/motcke/cursor-ext-rtl">GitHub</a> · נבנה עבור קהילת המפתחים ב-RTL</p>
+  </div>
+</footer>
+
+<script>
+const i18n = {
+  en: {
+    badge: "Open Source Extension",
+    title: "Cursor RTL",
+    tagline: "Smart multi-language RTL support for Cursor AI Chat. A purpose-built algorithm auto-detects text direction per element \u2014 RTL text is right-aligned, English stays left-aligned.",
+    download: "\u2B07 Download VSIX",
+    github: "\u2605 View on GitHub",
+    featuresLabel: "Features",
+    featuresTitle: "Built for multi-language developers",
+    f1Title: "One-Click Install",
+    f1Desc: "Enable or disable RTL support from the Command Palette with a single command. No manual file editing needed.",
+    f2Title: "Smart Auto-Detection",
+    f2Desc: "Each paragraph is analyzed individually. Hebrew, Arabic, and Persian text is right-aligned while English stays left-aligned. Mixed conversations just work.",
+    f3Title: "Survives Updates",
+    f3Desc: "Detects when Cursor updates overwrite the patch and offers to re-apply automatically. Your RTL setup stays intact.",
+    installLabel: "Get Started",
+    installTitle: "Install in 4 steps",
+    s1Title: "Download",
+    s1Desc: 'Download the latest <code>.vsix</code> from the <a href="https://github.com/motcke/cursor-ext-rtl/releases">Releases page</a>.',
+    s2Title: "Install the extension",
+    s2Desc: 'Open the Extensions view (<code>Ctrl+Shift+X</code>) \u2192 click the <code>...</code> menu \u2192 select <strong>Install from VSIX...</strong> \u2192 choose the downloaded file.',
+    s3Title: "Enable RTL",
+    s3Desc: 'Look for <strong>RTL: OFF</strong> on the right side of the bottom status bar \u2192 click it \u2192 select <strong>Enable RTL</strong>.',
+    s4Title: "Restart",
+    s4Desc: 'Approve the installation \u2192 close and reopen <strong>all</strong> Cursor windows.',
+    footer: 'Apache 2.0 License \u00B7 <a href="https://github.com/motcke/cursor-ext-rtl">GitHub</a> \u00B7 Made for the RTL developer community'
+  },
+  he: {
+    badge: "\u05EA\u05D5\u05E1\u05E3 \u05E7\u05D5\u05D3 \u05E4\u05EA\u05D5\u05D7",
+    title: "Cursor RTL",
+    tagline: "\u05EA\u05DE\u05D9\u05DB\u05EA RTL \u05E8\u05D1-\u05DC\u05E9\u05D5\u05E0\u05D9\u05EA \u05D7\u05DB\u05DE\u05D4 \u05DC-Cursor AI Chat. \u05D0\u05DC\u05D2\u05D5\u05E8\u05D9\u05EA\u05DD \u05D9\u05D9\u05E2\u05D5\u05D3\u05D9 \u05DE\u05D6\u05D4\u05D4 \u05D0\u05D5\u05D8\u05D5\u05DE\u05D8\u05D9\u05EA \u05D0\u05EA \u05DB\u05D9\u05D5\u05D5\u05DF \u05D4\u05D8\u05E7\u05E1\u05D8 \u05DC\u05DB\u05DC \u05D0\u05DC\u05DE\u05E0\u05D8 \u2014 \u05D8\u05E7\u05E1\u05D8 \u05D1\u05E2\u05D1\u05E8\u05D9\u05EA \u05DE\u05D9\u05D5\u05E9\u05E8 \u05DC\u05D9\u05DE\u05D9\u05DF, \u05D0\u05E0\u05D2\u05DC\u05D9\u05EA \u05E0\u05E9\u05D0\u05E8\u05EA \u05DC\u05E9\u05DE\u05D0\u05DC.",
+    download: "\u2B07 \u05D4\u05D5\u05E8\u05D3\u05EA VSIX",
+    github: "\u2605 \u05E6\u05E4\u05D9\u05D9\u05D4 \u05D1-GitHub",
+    featuresLabel: "\u05EA\u05DB\u05D5\u05E0\u05D5\u05EA",
+    featuresTitle: "\u05E0\u05D1\u05E0\u05D4 \u05E2\u05D1\u05D5\u05E8 \u05DE\u05E4\u05EA\u05D7\u05D9\u05DD \u05E8\u05D1-\u05DC\u05E9\u05D5\u05E0\u05D9\u05D9\u05DD",
+    f1Title: "\u05D4\u05EA\u05E7\u05E0\u05D4 \u05D1\u05DC\u05D7\u05D9\u05E6\u05D4 \u05D0\u05D7\u05EA",
+    f1Desc: "\u05D4\u05E4\u05E2\u05DC\u05D4 \u05D0\u05D5 \u05DB\u05D9\u05D1\u05D5\u05D9 \u05EA\u05DE\u05D9\u05DB\u05EA RTL \u05DE\u05DC\u05D5\u05D7 \u05D4\u05E4\u05E7\u05D5\u05D3\u05D5\u05EA \u05D1\u05E4\u05E7\u05D5\u05D3\u05D4 \u05D0\u05D7\u05EA. \u05DC\u05DC\u05D0 \u05E2\u05E8\u05D9\u05DB\u05D4 \u05D9\u05D3\u05E0\u05D9\u05EA \u05E9\u05DC \u05E7\u05D1\u05E6\u05D9\u05DD.",
+    f2Title: "\u05D6\u05D9\u05D4\u05D5\u05D9 \u05D0\u05D5\u05D8\u05D5\u05DE\u05D8\u05D9 \u05D7\u05DB\u05DD",
+    f2Desc: "\u05DB\u05DC \u05E4\u05E1\u05E7\u05D4 \u05DE\u05E0\u05D5\u05EA\u05D7\u05EA \u05D1\u05E0\u05E4\u05E8\u05D3. \u05D8\u05E7\u05E1\u05D8 \u05D1\u05E2\u05D1\u05E8\u05D9\u05EA, \u05E2\u05E8\u05D1\u05D9\u05EA \u05D5\u05E4\u05E8\u05E1\u05D9\u05EA \u05DE\u05D9\u05D5\u05E9\u05E8 \u05DC\u05D9\u05DE\u05D9\u05DF, \u05D0\u05E0\u05D2\u05DC\u05D9\u05EA \u05E0\u05E9\u05D0\u05E8\u05EA \u05DC\u05E9\u05DE\u05D0\u05DC. \u05E9\u05D9\u05D7\u05D5\u05EA \u05DE\u05E2\u05D5\u05E8\u05D1\u05D5\u05EA \u05E4\u05E9\u05D5\u05D8 \u05E2\u05D5\u05D1\u05D3\u05D5\u05EA.",
+    f3Title: "\u05E9\u05D5\u05E8\u05D3 \u05E2\u05D3\u05DB\u05D5\u05E0\u05D9\u05DD",
+    f3Desc: "\u05DE\u05D6\u05D4\u05D4 \u05DB\u05E9\u05E2\u05D3\u05DB\u05D5\u05E0\u05D9 Cursor \u05D3\u05D5\u05E8\u05E1\u05D9\u05DD \u05D0\u05EA \u05D4\u05EA\u05D9\u05E7\u05D5\u05DF \u05D5\u05DE\u05E6\u05D9\u05E2 \u05DC\u05D4\u05D7\u05D9\u05DC \u05DE\u05D7\u05D3\u05E9 \u05D0\u05D5\u05D8\u05D5\u05DE\u05D8\u05D9\u05EA. \u05D4\u05D4\u05D2\u05D3\u05E8\u05D5\u05EA \u05E9\u05DC\u05DA \u05E0\u05E9\u05D0\u05E8\u05D5\u05EA.",
+    installLabel: "\u05D4\u05EA\u05D7\u05DC\u05D4",
+    installTitle: "\u05D4\u05EA\u05E7\u05E0\u05D4 \u05D1-4 \u05E6\u05E2\u05D3\u05D9\u05DD",
+    s1Title: "\u05D4\u05D5\u05E8\u05D3\u05D4",
+    s1Desc: '\u05D4\u05D5\u05E8\u05D9\u05D3\u05D5 \u05D0\u05EA \u05D4-<code>.vsix</code> \u05D4\u05D0\u05D7\u05E8\u05D5\u05DF \u05DE<a href="https://github.com/motcke/cursor-ext-rtl/releases">\u05D3\u05E3 \u05D4-Releases</a>.',
+    s2Title: "\u05D4\u05EA\u05E7\u05E0\u05EA \u05D4\u05EA\u05D5\u05E1\u05E3",
+    s2Desc: '\u05E4\u05EA\u05D7\u05D5 \u05D0\u05EA \u05EA\u05E6\u05D5\u05D2\u05EA \u05D4\u05EA\u05D5\u05E1\u05E4\u05D9\u05DD (<code>Ctrl+Shift+X</code>) \u2192 \u05DC\u05D7\u05E6\u05D5 \u05E2\u05DC \u05EA\u05E4\u05E8\u05D9\u05D8 <code>...</code> \u2192 \u05D1\u05D7\u05E8\u05D5 <strong>Install from VSIX...</strong> \u2192 \u05D1\u05D7\u05E8\u05D5 \u05D0\u05EA \u05D4\u05E7\u05D5\u05D1\u05E5 \u05E9\u05D4\u05D5\u05E8\u05D3\u05EA\u05DD.',
+    s3Title: "\u05D4\u05E4\u05E2\u05DC\u05EA RTL",
+    s3Desc: '\u05D7\u05E4\u05E9\u05D5 \u05D0\u05EA <strong>RTL: OFF</strong> \u05D1\u05E6\u05D3 \u05D9\u05DE\u05D9\u05DF \u05E9\u05DC \u05E9\u05D5\u05E8\u05EA \u05D4\u05DE\u05E6\u05D1 \u05D4\u05EA\u05D7\u05EA\u05D5\u05E0\u05D4 \u2192 \u05DC\u05D7\u05E6\u05D5 \u2192 \u05D1\u05D7\u05E8\u05D5 <strong>Enable RTL</strong>.',
+    s4Title: "\u05D4\u05E4\u05E2\u05DC\u05D4 \u05DE\u05D7\u05D3\u05E9",
+    s4Desc: '\u05D0\u05E9\u05E8\u05D5 \u05D0\u05EA \u05D4\u05D4\u05EA\u05E7\u05E0\u05D4 \u2192 \u05E1\u05D2\u05E8\u05D5 \u05D5\u05E4\u05EA\u05D7\u05D5 \u05DE\u05D7\u05D3\u05E9 \u05D0\u05EA <strong>\u05DB\u05DC</strong> \u05D7\u05DC\u05D5\u05E0\u05D5\u05EA Cursor.',
+    footer: '\u05E8\u05D9\u05E9\u05D9\u05D5\u05DF Apache 2.0 \u00B7 <a href="https://github.com/motcke/cursor-ext-rtl">GitHub</a> \u00B7 \u05E0\u05D1\u05E0\u05D4 \u05E2\u05D1\u05D5\u05E8 \u05E7\u05D4\u05D9\u05DC\u05EA \u05D4\u05DE\u05E4\u05EA\u05D7\u05D9\u05DD \u05D1-RTL'
+  },
+  ar: {
+    badge: "\u0625\u0636\u0627\u0641\u0629 \u0645\u0641\u062A\u0648\u062D\u0629 \u0627\u0644\u0645\u0635\u062F\u0631",
+    title: "Cursor RTL",
+    tagline: "\u062F\u0639\u0645 RTL \u0630\u0643\u064A \u0645\u062A\u0639\u062F\u062F \u0627\u0644\u0644\u063A\u0627\u062A \u0644\u0640 Cursor AI Chat. \u062E\u0648\u0627\u0631\u0632\u0645\u064A\u0629 \u0645\u0635\u0645\u0645\u0629 \u062E\u0635\u064A\u0635\u0627\u064B \u062A\u0643\u062A\u0634\u0641 \u0627\u062A\u062C\u0627\u0647 \u0627\u0644\u0646\u0635 \u062A\u0644\u0642\u0627\u0626\u064A\u0627\u064B \u0644\u0643\u0644 \u0639\u0646\u0635\u0631 \u2014 \u0627\u0644\u0646\u0635 \u0627\u0644\u0639\u0631\u0628\u064A \u064A\u064F\u0645\u062D\u0627\u0630\u0649 \u0644\u0644\u064A\u0645\u064A\u0646\u060C \u0648\u0627\u0644\u0625\u0646\u062C\u0644\u064A\u0632\u064A \u064A\u0628\u0642\u0649 \u0644\u0644\u064A\u0633\u0627\u0631.",
+    download: "\u2B07 \u062A\u062D\u0645\u064A\u0644 VSIX",
+    github: "\u2605 \u0639\u0631\u0636 \u0639\u0644\u0649 GitHub",
+    featuresLabel: "\u0627\u0644\u0645\u064A\u0632\u0627\u062A",
+    featuresTitle: "\u0645\u0635\u0645\u0645 \u0644\u0644\u0645\u0637\u0648\u0631\u064A\u0646 \u0645\u062A\u0639\u062F\u062F\u064A \u0627\u0644\u0644\u063A\u0627\u062A",
+    f1Title: "\u062A\u062B\u0628\u064A\u062A \u0628\u0646\u0642\u0631\u0629 \u0648\u0627\u062D\u062F\u0629",
+    f1Desc: "\u062A\u0641\u0639\u064A\u0644 \u0623\u0648 \u062A\u0639\u0637\u064A\u0644 \u062F\u0639\u0645 RTL \u0645\u0646 \u0644\u0648\u062D\u0629 \u0627\u0644\u0623\u0648\u0627\u0645\u0631 \u0628\u0623\u0645\u0631 \u0648\u0627\u062D\u062F. \u0644\u0627 \u062D\u0627\u062C\u0629 \u0644\u062A\u062D\u0631\u064A\u0631 \u0627\u0644\u0645\u0644\u0641\u0627\u062A \u064A\u062F\u0648\u064A\u0627\u064B.",
+    f2Title: "\u0627\u0643\u062A\u0634\u0627\u0641 \u062A\u0644\u0642\u0627\u0626\u064A \u0630\u0643\u064A",
+    f2Desc: "\u064A\u062A\u0645 \u062A\u062D\u0644\u064A\u0644 \u0643\u0644 \u0641\u0642\u0631\u0629 \u0628\u0634\u0643\u0644 \u0645\u0633\u062A\u0642\u0644. \u0627\u0644\u0646\u0635 \u0627\u0644\u0639\u0631\u0628\u064A \u0648\u0627\u0644\u0639\u0628\u0631\u064A \u0648\u0627\u0644\u0641\u0627\u0631\u0633\u064A \u064A\u064F\u0645\u062D\u0627\u0630\u0649 \u0644\u0644\u064A\u0645\u064A\u0646\u060C \u0648\u0627\u0644\u0625\u0646\u062C\u0644\u064A\u0632\u064A \u064A\u0628\u0642\u0649 \u0644\u0644\u064A\u0633\u0627\u0631. \u0627\u0644\u0645\u062D\u0627\u062F\u062B\u0627\u062A \u0627\u0644\u0645\u062E\u062A\u0644\u0637\u0629 \u062A\u0639\u0645\u0644 \u0628\u0633\u0644\u0627\u0633\u0629.",
+    f3Title: "\u064A\u0646\u062C\u0648 \u0645\u0646 \u0627\u0644\u062A\u062D\u062F\u064A\u062B\u0627\u062A",
+    f3Desc: "\u064A\u0643\u062A\u0634\u0641 \u0639\u0646\u062F\u0645\u0627 \u062A\u062D\u062F\u064A\u062B\u0627\u062A Cursor \u062A\u0643\u062A\u0628 \u0641\u0648\u0642 \u0627\u0644\u062A\u0635\u062D\u064A\u062D \u0648\u064A\u0639\u0631\u0636 \u0625\u0639\u0627\u062F\u0629 \u0627\u0644\u062A\u0637\u0628\u064A\u0642 \u062A\u0644\u0642\u0627\u0626\u064A\u0627\u064B. \u0625\u0639\u062F\u0627\u062F\u0627\u062A RTL \u062A\u0628\u0642\u0649 \u0633\u0644\u064A\u0645\u0629.",
+    installLabel: "\u0627\u0628\u062F\u0623",
+    installTitle: "\u062A\u062B\u0628\u064A\u062A \u0641\u064A 4 \u062E\u0637\u0648\u0627\u062A",
+    s1Title: "\u062A\u062D\u0645\u064A\u0644",
+    s1Desc: '\u062D\u0645\u0651\u0644 \u0623\u062D\u062F\u062B <code>.vsix</code> \u0645\u0646 <a href="https://github.com/motcke/cursor-ext-rtl/releases">\u0635\u0641\u062D\u0629 \u0627\u0644\u0625\u0635\u062F\u0627\u0631\u0627\u062A</a>.',
+    s2Title: "\u062A\u062B\u0628\u064A\u062A \u0627\u0644\u0625\u0636\u0627\u0641\u0629",
+    s2Desc: '\u0627\u0641\u062A\u062D \u0639\u0631\u0636 \u0627\u0644\u0625\u0636\u0627\u0641\u0627\u062A (<code>Ctrl+Shift+X</code>) \u2192 \u0627\u0646\u0642\u0631 \u0639\u0644\u0649 \u0642\u0627\u0626\u0645\u0629 <code>...</code> \u2192 \u0627\u062E\u062A\u0631 <strong>Install from VSIX...</strong> \u2192 \u0627\u062E\u062A\u0631 \u0627\u0644\u0645\u0644\u0641 \u0627\u0644\u0645\u062D\u0645\u0651\u0644.',
+    s3Title: "\u062A\u0641\u0639\u064A\u0644 RTL",
+    s3Desc: '\u0627\u0628\u062D\u062B \u0639\u0646 <strong>RTL: OFF</strong> \u0641\u064A \u0627\u0644\u062C\u0627\u0646\u0628 \u0627\u0644\u0623\u064A\u0645\u0646 \u0645\u0646 \u0634\u0631\u064A\u0637 \u0627\u0644\u062D\u0627\u0644\u0629 \u0627\u0644\u0633\u0641\u0644\u064A \u2192 \u0627\u0646\u0642\u0631 \u0639\u0644\u064A\u0647 \u2192 \u0627\u062E\u062A\u0631 <strong>Enable RTL</strong>.',
+    s4Title: "\u0625\u0639\u0627\u062F\u0629 \u0627\u0644\u062A\u0634\u063A\u064A\u0644",
+    s4Desc: '\u0648\u0627\u0641\u0642 \u0639\u0644\u0649 \u0627\u0644\u062A\u062B\u0628\u064A\u062A \u2192 \u0623\u063A\u0644\u0642 \u0648\u0623\u0639\u062F \u0641\u062A\u062D <strong>\u062C\u0645\u064A\u0639</strong> \u0646\u0648\u0627\u0641\u0630 Cursor.',
+    footer: '\u0631\u062E\u0635\u0629 Apache 2.0 \u00B7 <a href="https://github.com/motcke/cursor-ext-rtl">GitHub</a> \u00B7 \u0635\u064F\u0646\u0639 \u0644\u0645\u062C\u062A\u0645\u0639 \u0645\u0637\u0648\u0631\u064A RTL'
+  },
+  fa: {
+    badge: "\u0627\u0641\u0632\u0648\u0646\u0647 \u0645\u062A\u0646\u200C\u0628\u0627\u0632",
+    title: "Cursor RTL",
+    tagline: "\u067E\u0634\u062A\u06CC\u0628\u0627\u0646\u06CC RTL \u0647\u0648\u0634\u0645\u0646\u062F \u0686\u0646\u062F\u0632\u0628\u0627\u0646\u0647 \u0628\u0631\u0627\u06CC Cursor AI Chat. \u0627\u0644\u06AF\u0648\u0631\u06CC\u062A\u0645\u06CC \u0627\u062E\u062A\u0635\u0627\u0635\u06CC \u06A9\u0647 \u062C\u0647\u062A \u0645\u062A\u0646 \u0631\u0627 \u0628\u0631\u0627\u06CC \u0647\u0631 \u0639\u0646\u0635\u0631 \u0628\u0647\u200C\u0637\u0648\u0631 \u062E\u0648\u062F\u06A9\u0627\u0631 \u062A\u0634\u062E\u06CC\u0635 \u0645\u06CC\u200C\u062F\u0647\u062F \u2014 \u0645\u062A\u0646 \u0641\u0627\u0631\u0633\u06CC \u0628\u0647 \u0631\u0627\u0633\u062A \u0686\u06CC\u0646 \u0645\u06CC\u200C\u0634\u0648\u062F\u060C \u0627\u0646\u06AF\u0644\u06CC\u0633\u06CC \u0686\u067E\u200C\u0686\u06CC\u0646 \u0645\u06CC\u200C\u0645\u0627\u0646\u062F.",
+    download: "\u2B07 \u062F\u0627\u0646\u0644\u0648\u062F VSIX",
+    github: "\u2605 \u0645\u0634\u0627\u0647\u062F\u0647 \u062F\u0631 GitHub",
+    featuresLabel: "\u0648\u06CC\u0698\u06AF\u06CC\u200C\u0647\u0627",
+    featuresTitle: "\u0633\u0627\u062E\u062A\u0647 \u0634\u062F\u0647 \u0628\u0631\u0627\u06CC \u062A\u0648\u0633\u0639\u0647\u200C\u062F\u0647\u0646\u062F\u06AF\u0627\u0646 \u0686\u0646\u062F\u0632\u0628\u0627\u0646\u0647",
+    f1Title: "\u0646\u0635\u0628 \u0628\u0627 \u06CC\u06A9 \u06A9\u0644\u06CC\u06A9",
+    f1Desc: "\u0641\u0639\u0627\u0644 \u06CC\u0627 \u063A\u06CC\u0631\u0641\u0639\u0627\u0644 \u06A9\u0631\u062F\u0646 \u067E\u0634\u062A\u06CC\u0628\u0627\u0646\u06CC RTL \u0627\u0632 \u067E\u0646\u0644 \u062F\u0633\u062A\u0648\u0631\u0627\u062A \u0628\u0627 \u06CC\u06A9 \u062F\u0633\u062A\u0648\u0631. \u0628\u062F\u0648\u0646 \u0646\u06CC\u0627\u0632 \u0628\u0647 \u0648\u06CC\u0631\u0627\u06CC\u0634 \u062F\u0633\u062A\u06CC \u0641\u0627\u06CC\u0644\u200C\u0647\u0627.",
+    f2Title: "\u062A\u0634\u062E\u06CC\u0635 \u062E\u0648\u062F\u06A9\u0627\u0631 \u0647\u0648\u0634\u0645\u0646\u062F",
+    f2Desc: "\u0647\u0631 \u067E\u0627\u0631\u0627\u06AF\u0631\u0627\u0641 \u0628\u0647\u200C\u0635\u0648\u0631\u062A \u0645\u0633\u062A\u0642\u0644 \u062A\u062D\u0644\u06CC\u0644 \u0645\u06CC\u200C\u0634\u0648\u062F. \u0645\u062A\u0646 \u0641\u0627\u0631\u0633\u06CC\u060C \u0639\u0631\u0628\u06CC \u0648 \u0639\u0628\u0631\u06CC \u0628\u0647 \u0631\u0627\u0633\u062A \u0686\u06CC\u0646 \u0648 \u0627\u0646\u06AF\u0644\u06CC\u0633\u06CC \u0686\u067E\u200C\u0686\u06CC\u0646 \u0645\u06CC\u200C\u0645\u0627\u0646\u062F. \u0645\u06A9\u0627\u0644\u0645\u0627\u062A \u0686\u0646\u062F\u0632\u0628\u0627\u0646\u0647 \u0628\u06CC\u200C\u062F\u0631\u062F\u0633\u0631 \u06A9\u0627\u0631 \u0645\u06CC\u200C\u06A9\u0646\u0646\u062F.",
+    f3Title: "\u0645\u0642\u0627\u0648\u0645 \u062F\u0631 \u0628\u0631\u0627\u0628\u0631 \u0628\u0647\u200C\u0631\u0648\u0632\u0631\u0633\u0627\u0646\u06CC",
+    f3Desc: "\u062A\u0634\u062E\u06CC\u0635 \u0645\u06CC\u200C\u062F\u0647\u062F \u0648\u0642\u062A\u06CC \u0628\u0647\u200C\u0631\u0648\u0632\u0631\u0633\u0627\u0646\u06CC Cursor \u067E\u0686 \u0631\u0627 \u0628\u0627\u0632\u0646\u0648\u06CC\u0633\u06CC \u0645\u06CC\u200C\u06A9\u0646\u062F \u0648 \u067E\u06CC\u0634\u0646\u0647\u0627\u062F \u0627\u0639\u0645\u0627\u0644 \u0645\u062C\u062F\u062F \u062E\u0648\u062F\u06A9\u0627\u0631 \u0645\u06CC\u200C\u062F\u0647\u062F. \u062A\u0646\u0638\u06CC\u0645\u0627\u062A RTL \u0634\u0645\u0627 \u062F\u0633\u062A\u200C\u0646\u062E\u0648\u0631\u062F\u0647 \u0645\u06CC\u200C\u0645\u0627\u0646\u062F.",
+    installLabel: "\u0634\u0631\u0648\u0639",
+    installTitle: "\u0646\u0635\u0628 \u062F\u0631 4 \u0645\u0631\u062D\u0644\u0647",
+    s1Title: "\u062F\u0627\u0646\u0644\u0648\u062F",
+    s1Desc: '\u0622\u062E\u0631\u06CC\u0646 \u0641\u0627\u06CC\u0644 <code>.vsix</code> \u0631\u0627 \u0627\u0632 <a href="https://github.com/motcke/cursor-ext-rtl/releases">\u0635\u0641\u062D\u0647 \u0627\u0646\u062A\u0634\u0627\u0631\u0627\u062A</a> \u062F\u0627\u0646\u0644\u0648\u062F \u06A9\u0646\u06CC\u062F.',
+    s2Title: "\u0646\u0635\u0628 \u0627\u0641\u0632\u0648\u0646\u0647",
+    s2Desc: '\u0646\u0645\u0627\u06CC \u0627\u0641\u0632\u0648\u0646\u0647\u200C\u0647\u0627 \u0631\u0627 \u0628\u0627\u0632 \u06A9\u0646\u06CC\u062F (<code>Ctrl+Shift+X</code>) \u2192 \u0631\u0648\u06CC \u0645\u0646\u0648\u06CC <code>...</code> \u06A9\u0644\u06CC\u06A9 \u06A9\u0646\u06CC\u062F \u2192 <strong>Install from VSIX...</strong> \u0631\u0627 \u0627\u0646\u062A\u062E\u0627\u0628 \u06A9\u0646\u06CC\u062F \u2192 \u0641\u0627\u06CC\u0644 \u062F\u0627\u0646\u0644\u0648\u062F \u0634\u062F\u0647 \u0631\u0627 \u0627\u0646\u062A\u062E\u0627\u0628 \u06A9\u0646\u06CC\u062F.',
+    s3Title: "\u0641\u0639\u0627\u0644\u200C\u0633\u0627\u0632\u06CC RTL",
+    s3Desc: '\u062F\u0631 \u0633\u0645\u062A \u0631\u0627\u0633\u062A \u0646\u0648\u0627\u0631 \u0648\u0636\u0639\u06CC\u062A \u067E\u0627\u06CC\u06CC\u0646 \u0628\u0647 \u062F\u0646\u0628\u0627\u0644 <strong>RTL: OFF</strong> \u0628\u06AF\u0631\u062F\u06CC\u062F \u2192 \u0631\u0648\u06CC \u0622\u0646 \u06A9\u0644\u06CC\u06A9 \u06A9\u0646\u06CC\u062F \u2192 <strong>Enable RTL</strong> \u0631\u0627 \u0627\u0646\u062A\u062E\u0627\u0628 \u06A9\u0646\u06CC\u062F.',
+    s4Title: "\u0631\u0627\u0647\u200C\u0627\u0646\u062F\u0627\u0632\u06CC \u0645\u062C\u062F\u062F",
+    s4Desc: '\u0646\u0635\u0628 \u0631\u0627 \u062A\u0623\u06CC\u06CC\u062F \u06A9\u0646\u06CC\u062F \u2192 <strong>\u0647\u0645\u0647</strong> \u067E\u0646\u062C\u0631\u0647\u200C\u0647\u0627\u06CC Cursor \u0631\u0627 \u0628\u0628\u0646\u062F\u06CC\u062F \u0648 \u062F\u0648\u0628\u0627\u0631\u0647 \u0628\u0627\u0632 \u06A9\u0646\u06CC\u062F.',
+    footer: '\u0645\u062C\u0648\u0632 Apache 2.0 \u00B7 <a href="https://github.com/motcke/cursor-ext-rtl">GitHub</a> \u00B7 \u0633\u0627\u062E\u062A\u0647 \u0634\u062F\u0647 \u0628\u0631\u0627\u06CC \u062C\u0627\u0645\u0639\u0647 \u062A\u0648\u0633\u0639\u0647\u200C\u062F\u0647\u0646\u062F\u06AF\u0627\u0646 RTL'
+  }
+};
+
+const rtlLangs = new Set(["he", "ar", "fa"]);
+
+function setLang(lang) {
+  const data = i18n[lang];
+  if (!data) return;
+
+  document.documentElement.lang = lang;
+  document.documentElement.dir = rtlLangs.has(lang) ? "rtl" : "ltr";
+
+  document.querySelectorAll("[data-i18n]").forEach(function(el) {
+    el.textContent = data[el.dataset.i18n] || el.textContent;
+  });
+
+  document.querySelectorAll("[data-i18n-html]").forEach(function(el) {
+    var key = el.getAttribute("data-i18n-html");
+    if (data[key]) el.innerHTML = data[key];
+  });
+
+  document.querySelectorAll(".lang-btn").forEach(function(btn) {
+    btn.classList.toggle("active", btn.dataset.lang === lang);
+  });
+
+  try { localStorage.setItem("cursor-rtl-lang", lang); } catch(e) {}
+}
+
+document.querySelectorAll(".lang-btn").forEach(function(btn) {
+  btn.addEventListener("click", function() { setLang(btn.dataset.lang); });
+});
+
+var saved = null;
+try { saved = localStorage.getItem("cursor-rtl-lang"); } catch(e) {}
+if (saved && i18n[saved]) setLang(saved);
+
+var observer = new IntersectionObserver(function(entries) {
+  entries.forEach(function(entry) {
+    if (entry.isIntersecting) {
+      entry.target.classList.add("visible");
+      observer.unobserve(entry.target);
+    }
+  });
+}, { threshold: 0.1 });
+
+document.querySelectorAll(".fade-in").forEach(function(el) { observer.observe(el); });
+</script>
+</body>
+</html>
