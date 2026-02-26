@@ -6,6 +6,28 @@ Smart multi-language RTL support for [Cursor](https://cursor.com) AI Chat. Uses 
 
 ---
 
+## Screenshots
+
+### Chat
+
+| Before | After |
+|--------|-------|
+| ![Chat before RTL](docs/screenshots/chat-before.png) | ![Chat after RTL](docs/screenshots/chat-after.png) |
+
+### Plan
+
+| Before | After |
+|--------|-------|
+| ![Plan before RTL](docs/screenshots/plan-before.png) | ![Plan after RTL](docs/screenshots/plan-after.png) |
+
+### Questions
+
+| Before | After |
+|--------|-------|
+| ![Q&A before RTL](docs/screenshots/qa-before.png) | ![Q&A after RTL](docs/screenshots/qa-after.png) |
+
+---
+
 ## Features
 
 - **Smart multi-language algorithm** - auto-detects text direction per element; only RTL text (Hebrew, Arabic, Persian) is right-aligned, English stays left-aligned

@@ -185,6 +185,75 @@ a:hover { opacity: 0.8 }
   line-height: 1.55;
 }
 
+/* ===== Showcase (Before & After) ===== */
+.showcase {
+  padding-block: 60px;
+}
+.showcase-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 48px;
+  margin-block-start: 8px;
+}
+.showcase-pair {
+  background: var(--bg-card);
+  border: 1px solid var(--border-card);
+  border-radius: var(--radius);
+  padding: 28px 24px 24px;
+  transition: border-color 0.3s;
+}
+.showcase-pair:hover {
+  border-color: rgba(255,255,255,0.15);
+}
+.showcase-pair h3 {
+  text-align: center;
+  font-size: 1.15rem;
+  margin-block-end: 20px;
+  color: var(--text-primary);
+}
+.showcase-images {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+}
+.showcase-img-wrapper {
+  position: relative;
+  border-radius: 8px;
+  overflow: hidden;
+  border: 1px solid var(--border-card);
+  background: #000;
+}
+.showcase-img-wrapper img {
+  display: block;
+  width: 100%;
+  height: auto;
+  transition: transform 0.3s ease;
+}
+.showcase-img-wrapper:hover img {
+  transform: scale(1.02);
+}
+.showcase-label {
+  position: absolute;
+  top: 10px;
+  inset-inline-start: 10px;
+  padding: 4px 14px;
+  border-radius: 20px;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+  z-index: 2;
+  pointer-events: none;
+}
+.showcase-label.before {
+  background: rgba(255,70,70,0.85);
+  color: #fff;
+}
+.showcase-label.after {
+  background: rgba(0,229,200,0.85);
+  color: #0a0a1a;
+}
+
 /* ===== Install ===== */
 .install {
   padding-block: 60px;
@@ -258,6 +327,7 @@ a:hover { opacity: 0.8 }
 @media (max-width: 640px) {
   .hero { padding-block-start: 100px; padding-block-end: 50px }
   .features-grid { grid-template-columns: 1fr }
+  .showcase-images { grid-template-columns: 1fr }
   .hero-buttons { flex-direction: column; align-items: center }
   .btn { width: 100%; max-width: 280px; justify-content: center }
   .lang-bar { gap: 2px; padding: 8px 8px }
@@ -319,6 +389,61 @@ a:hover { opacity: 0.8 }
         <h3 data-i18n="f3Title">שורד עדכונים</h3>
         <p data-i18n="f3Desc">מזהה כשעדכוני Cursor דורסים את התיקון ומציע להחיל מחדש אוטומטית. ההגדרות שלך נשארות.</p>
       </div>
+    </div>
+  </div>
+</section>
+
+<!-- Showcase (Before & After) -->
+<section class="showcase">
+  <div class="container">
+    <div class="fade-in">
+      <p class="section-label" data-i18n="showcaseLabel">לפני ואחרי</p>
+      <h2 class="section-title" data-i18n="showcaseTitle">ראו את ההבדל</h2>
+    </div>
+    <div class="showcase-grid">
+
+      <div class="showcase-pair fade-in">
+        <h3 data-i18n="pairChat">צ'אט</h3>
+        <div class="showcase-images">
+          <div class="showcase-img-wrapper">
+            <span class="showcase-label before" data-i18n="showcaseBefore">לפני</span>
+            <img src="screenshots/chat-before.png" alt="Chat before RTL extension" loading="lazy">
+          </div>
+          <div class="showcase-img-wrapper">
+            <span class="showcase-label after" data-i18n="showcaseAfter">אחרי</span>
+            <img src="screenshots/chat-after.png" alt="Chat after RTL extension" loading="lazy">
+          </div>
+        </div>
+      </div>
+
+      <div class="showcase-pair fade-in">
+        <h3 data-i18n="pairPlan">Plan</h3>
+        <div class="showcase-images">
+          <div class="showcase-img-wrapper">
+            <span class="showcase-label before" data-i18n="showcaseBefore">לפני</span>
+            <img src="screenshots/plan-before.png" alt="Plan before RTL extension" loading="lazy">
+          </div>
+          <div class="showcase-img-wrapper">
+            <span class="showcase-label after" data-i18n="showcaseAfter">אחרי</span>
+            <img src="screenshots/plan-after.png" alt="Plan after RTL extension" loading="lazy">
+          </div>
+        </div>
+      </div>
+
+      <div class="showcase-pair fade-in">
+        <h3 data-i18n="pairQA">שאלות</h3>
+        <div class="showcase-images">
+          <div class="showcase-img-wrapper">
+            <span class="showcase-label before" data-i18n="showcaseBefore">לפני</span>
+            <img src="screenshots/qa-before.png" alt="Q&A before RTL extension" loading="lazy">
+          </div>
+          <div class="showcase-img-wrapper">
+            <span class="showcase-label after" data-i18n="showcaseAfter">אחרי</span>
+            <img src="screenshots/qa-after.png" alt="Q&A after RTL extension" loading="lazy">
+          </div>
+        </div>
+      </div>
+
     </div>
   </div>
 </section>
@@ -396,7 +521,14 @@ const i18n = {
     s3Desc: 'Look for <strong>RTL: OFF</strong> on the right side of the bottom status bar \u2192 click it \u2192 select <strong>Enable RTL</strong>.',
     s4Title: "Restart",
     s4Desc: 'Approve the installation \u2192 close and reopen <strong>all</strong> Cursor windows.',
-    footer: 'Apache 2.0 License \u00B7 <a href="https://github.com/motcke/cursor-ext-rtl">GitHub</a> \u00B7 Made for the RTL developer community'
+    footer: 'Apache 2.0 License \u00B7 <a href="https://github.com/motcke/cursor-ext-rtl">GitHub</a> \u00B7 Made for the RTL developer community',
+    showcaseLabel: "Before & After",
+    showcaseTitle: "See the Difference",
+    showcaseBefore: "Before",
+    showcaseAfter: "After",
+    pairChat: "Chat",
+    pairPlan: "Plan",
+    pairQA: "Questions"
   },
   he: {
     badge: "\u05EA\u05D5\u05E1\u05E3 \u05E7\u05D5\u05D3 \u05E4\u05EA\u05D5\u05D7",
@@ -422,7 +554,14 @@ const i18n = {
     s3Desc: '\u05D7\u05E4\u05E9\u05D5 \u05D0\u05EA <strong>RTL: OFF</strong> \u05D1\u05E6\u05D3 \u05D9\u05DE\u05D9\u05DF \u05E9\u05DC \u05E9\u05D5\u05E8\u05EA \u05D4\u05DE\u05E6\u05D1 \u05D4\u05EA\u05D7\u05EA\u05D5\u05E0\u05D4 \u2192 \u05DC\u05D7\u05E6\u05D5 \u2192 \u05D1\u05D7\u05E8\u05D5 <strong>Enable RTL</strong>.',
     s4Title: "\u05D4\u05E4\u05E2\u05DC\u05D4 \u05DE\u05D7\u05D3\u05E9",
     s4Desc: '\u05D0\u05E9\u05E8\u05D5 \u05D0\u05EA \u05D4\u05D4\u05EA\u05E7\u05E0\u05D4 \u2192 \u05E1\u05D2\u05E8\u05D5 \u05D5\u05E4\u05EA\u05D7\u05D5 \u05DE\u05D7\u05D3\u05E9 \u05D0\u05EA <strong>\u05DB\u05DC</strong> \u05D7\u05DC\u05D5\u05E0\u05D5\u05EA Cursor.',
-    footer: '\u05E8\u05D9\u05E9\u05D9\u05D5\u05DF Apache 2.0 \u00B7 <a href="https://github.com/motcke/cursor-ext-rtl">GitHub</a> \u00B7 \u05E0\u05D1\u05E0\u05D4 \u05E2\u05D1\u05D5\u05E8 \u05E7\u05D4\u05D9\u05DC\u05EA \u05D4\u05DE\u05E4\u05EA\u05D7\u05D9\u05DD \u05D1-RTL'
+    footer: '\u05E8\u05D9\u05E9\u05D9\u05D5\u05DF Apache 2.0 \u00B7 <a href="https://github.com/motcke/cursor-ext-rtl">GitHub</a> \u00B7 \u05E0\u05D1\u05E0\u05D4 \u05E2\u05D1\u05D5\u05E8 \u05E7\u05D4\u05D9\u05DC\u05EA \u05D4\u05DE\u05E4\u05EA\u05D7\u05D9\u05DD \u05D1-RTL',
+    showcaseLabel: "\u05DC\u05E4\u05E0\u05D9 \u05D5\u05D0\u05D7\u05E8\u05D9",
+    showcaseTitle: "\u05E8\u05D0\u05D5 \u05D0\u05EA \u05D4\u05D4\u05D1\u05D3\u05DC",
+    showcaseBefore: "\u05DC\u05E4\u05E0\u05D9",
+    showcaseAfter: "\u05D0\u05D7\u05E8\u05D9",
+    pairChat: "\u05E6\u05F3\u05D0\u05D8",
+    pairPlan: "Plan",
+    pairQA: "\u05E9\u05D0\u05DC\u05D5\u05EA"
   },
   ar: {
     badge: "\u0625\u0636\u0627\u0641\u0629 \u0645\u0641\u062A\u0648\u062D\u0629 \u0627\u0644\u0645\u0635\u062F\u0631",
@@ -448,7 +587,14 @@ const i18n = {
     s3Desc: '\u0627\u0628\u062D\u062B \u0639\u0646 <strong>RTL: OFF</strong> \u0641\u064A \u0627\u0644\u062C\u0627\u0646\u0628 \u0627\u0644\u0623\u064A\u0645\u0646 \u0645\u0646 \u0634\u0631\u064A\u0637 \u0627\u0644\u062D\u0627\u0644\u0629 \u0627\u0644\u0633\u0641\u0644\u064A \u2192 \u0627\u0646\u0642\u0631 \u0639\u0644\u064A\u0647 \u2192 \u0627\u062E\u062A\u0631 <strong>Enable RTL</strong>.',
     s4Title: "\u0625\u0639\u0627\u062F\u0629 \u0627\u0644\u062A\u0634\u063A\u064A\u0644",
     s4Desc: '\u0648\u0627\u0641\u0642 \u0639\u0644\u0649 \u0627\u0644\u062A\u062B\u0628\u064A\u062A \u2192 \u0623\u063A\u0644\u0642 \u0648\u0623\u0639\u062F \u0641\u062A\u062D <strong>\u062C\u0645\u064A\u0639</strong> \u0646\u0648\u0627\u0641\u0630 Cursor.',
-    footer: '\u0631\u062E\u0635\u0629 Apache 2.0 \u00B7 <a href="https://github.com/motcke/cursor-ext-rtl">GitHub</a> \u00B7 \u0635\u064F\u0646\u0639 \u0644\u0645\u062C\u062A\u0645\u0639 \u0645\u0637\u0648\u0631\u064A RTL'
+    footer: '\u0631\u062E\u0635\u0629 Apache 2.0 \u00B7 <a href="https://github.com/motcke/cursor-ext-rtl">GitHub</a> \u00B7 \u0635\u064F\u0646\u0639 \u0644\u0645\u062C\u062A\u0645\u0639 \u0645\u0637\u0648\u0631\u064A RTL',
+    showcaseLabel: "\u0642\u0628\u0644 \u0648\u0628\u0639\u062F",
+    showcaseTitle: "\u0634\u0627\u0647\u062F \u0627\u0644\u0641\u0631\u0642",
+    showcaseBefore: "\u0642\u0628\u0644",
+    showcaseAfter: "\u0628\u0639\u062F",
+    pairChat: "\u0627\u0644\u0645\u062D\u0627\u062F\u062B\u0629",
+    pairPlan: "Plan",
+    pairQA: "\u0627\u0644\u0623\u0633\u0626\u0644\u0629"
   },
   fa: {
     badge: "\u0627\u0641\u0632\u0648\u0646\u0647 \u0645\u062A\u0646\u200C\u0628\u0627\u0632",
@@ -474,7 +620,14 @@ const i18n = {
     s3Desc: '\u062F\u0631 \u0633\u0645\u062A \u0631\u0627\u0633\u062A \u0646\u0648\u0627\u0631 \u0648\u0636\u0639\u06CC\u062A \u067E\u0627\u06CC\u06CC\u0646 \u0628\u0647 \u062F\u0646\u0628\u0627\u0644 <strong>RTL: OFF</strong> \u0628\u06AF\u0631\u062F\u06CC\u062F \u2192 \u0631\u0648\u06CC \u0622\u0646 \u06A9\u0644\u06CC\u06A9 \u06A9\u0646\u06CC\u062F \u2192 <strong>Enable RTL</strong> \u0631\u0627 \u0627\u0646\u062A\u062E\u0627\u0628 \u06A9\u0646\u06CC\u062F.',
     s4Title: "\u0631\u0627\u0647\u200C\u0627\u0646\u062F\u0627\u0632\u06CC \u0645\u062C\u062F\u062F",
     s4Desc: '\u0646\u0635\u0628 \u0631\u0627 \u062A\u0623\u06CC\u06CC\u062F \u06A9\u0646\u06CC\u062F \u2192 <strong>\u0647\u0645\u0647</strong> \u067E\u0646\u062C\u0631\u0647\u200C\u0647\u0627\u06CC Cursor \u0631\u0627 \u0628\u0628\u0646\u062F\u06CC\u062F \u0648 \u062F\u0648\u0628\u0627\u0631\u0647 \u0628\u0627\u0632 \u06A9\u0646\u06CC\u062F.',
-    footer: '\u0645\u062C\u0648\u0632 Apache 2.0 \u00B7 <a href="https://github.com/motcke/cursor-ext-rtl">GitHub</a> \u00B7 \u0633\u0627\u062E\u062A\u0647 \u0634\u062F\u0647 \u0628\u0631\u0627\u06CC \u062C\u0627\u0645\u0639\u0647 \u062A\u0648\u0633\u0639\u0647\u200C\u062F\u0647\u0646\u062F\u06AF\u0627\u0646 RTL'
+    footer: '\u0645\u062C\u0648\u0632 Apache 2.0 \u00B7 <a href="https://github.com/motcke/cursor-ext-rtl">GitHub</a> \u00B7 \u0633\u0627\u062E\u062A\u0647 \u0634\u062F\u0647 \u0628\u0631\u0627\u06CC \u062C\u0627\u0645\u0639\u0647 \u062A\u0648\u0633\u0639\u0647\u200C\u062F\u0647\u0646\u062F\u06AF\u0627\u0646 RTL',
+    showcaseLabel: "\u0642\u0628\u0644 \u0648 \u0628\u0639\u062F",
+    showcaseTitle: "\u062A\u0641\u0627\u0648\u062A \u0631\u0627 \u0628\u0628\u06CC\u0646\u06CC\u062F",
+    showcaseBefore: "\u0642\u0628\u0644",
+    showcaseAfter: "\u0628\u0639\u062F",
+    pairChat: "\u0686\u062A",
+    pairPlan: "Plan",
+    pairQA: "\u0633\u0648\u0627\u0644\u0627\u062A"
   }
 };
 
