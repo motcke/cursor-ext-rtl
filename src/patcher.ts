@@ -3,18 +3,9 @@ import * as path from 'path';
 import {
     PATCH_LINE,
     PATCH_MARKER,
-    RTL_FILENAME,
+    LOADER_FILENAME,
     BACKUP_PREFIX,
 } from './constants';
-
-export function verifySignature(mainJsPath: string): boolean {
-    try {
-        const content = fs.readFileSync(mainJsPath, 'utf-8');
-        return content.includes('Copyright (C) Microsoft Corporation');
-    } catch {
-        return false;
-    }
-}
 
 export function isPatched(mainJsPath: string): boolean {
     try {
@@ -23,6 +14,13 @@ export function isPatched(mainJsPath: string): boolean {
     } catch {
         return false;
     }
+}
+
+function stripPatchLines(content: string): string {
+    const lines = content.split('\n');
+    return lines
+        .filter((line) => !line.includes(PATCH_MARKER))
+        .join('\n');
 }
 
 function formatTimestamp(): string {
@@ -43,7 +41,6 @@ export function backup(mainJsPath: string): string {
     const dir = path.dirname(mainJsPath);
     const backupName = BACKUP_PREFIX + formatTimestamp();
     const backupPath = path.join(dir, backupName);
-
     fs.copyFileSync(mainJsPath, backupPath);
     return backupPath;
 }
@@ -115,51 +112,48 @@ export function removePatch(mainJsPath: string): void {
         if (!content.includes(PATCH_MARKER)) {
             return;
         }
-        const lines = content.split('\n');
-        const filtered = lines.filter((line) => !line.includes(PATCH_MARKER));
-        fs.writeFileSync(mainJsPath, filtered.join('\n'), 'utf-8');
+        fs.writeFileSync(mainJsPath, stripPatchLines(content), 'utf-8');
     }
 
-    removeRtlScript(dir);
+    removeLoader(dir);
 }
 
-export function copyRtlScript(targetDir: string, extensionPath: string): void {
-    const src = path.join(extensionPath, 'resources', RTL_FILENAME);
-    const dest = path.join(targetDir, RTL_FILENAME);
+export function copyLoader(outDir: string, extensionPath: string): void {
+    const src = path.join(extensionPath, 'resources', LOADER_FILENAME);
+    const dest = path.join(outDir, LOADER_FILENAME);
     fs.copyFileSync(src, dest);
 }
 
-export function removeRtlScript(targetDir: string): void {
-    const rtlPath = path.join(targetDir, RTL_FILENAME);
+export function removeLoader(outDir: string): void {
+    const p = path.join(outDir, LOADER_FILENAME);
     try {
-        if (fs.existsSync(rtlPath)) {
-            fs.unlinkSync(rtlPath);
+        if (fs.existsSync(p)) {
+            fs.unlinkSync(p);
         }
     } catch {
-        // Ignore if file doesn't exist or can't be deleted
+        // best-effort
     }
 }
 
-export function getDryRunSummary(
-    mainJsPath: string,
-    extensionPath: string
-): string[] {
-    const dir = path.dirname(mainJsPath);
+export function getDryRunSummary(mainJsPath: string): string[] {
     const actions: string[] = [];
+    const dir = path.dirname(mainJsPath);
 
     if (isPatched(mainJsPath)) {
-        actions.push('RTL patch is already applied (no changes needed to main.js)');
+        actions.push('RTL patch is already up to date in main.js');
     } else {
         actions.push(`Backup main.js → ${BACKUP_PREFIX}<timestamp>`);
-        actions.push(`Insert RTL patch line into: ${mainJsPath}`);
+        actions.push('Insert one-line loader require into main.js');
     }
 
-    const rtlDest = path.join(dir, RTL_FILENAME);
-    if (fs.existsSync(rtlDest)) {
-        actions.push(`Overwrite existing ${RTL_FILENAME} in: ${dir}`);
+    const loaderDest = path.join(dir, LOADER_FILENAME);
+    if (fs.existsSync(loaderDest)) {
+        actions.push(`Update loader script: ${loaderDest}`);
     } else {
-        actions.push(`Copy ${RTL_FILENAME} to: ${dir}`);
+        actions.push(`Write loader script: ${loaderDest}`);
     }
+
+    actions.push('RTL script stays in extension directory (auto-updates with extension)');
 
     return actions;
 }

@@ -6,10 +6,11 @@ import {
     hasBackups,
     applyPatch,
     removePatch,
-    copyRtlScript,
+    copyLoader,
     getDryRunSummary,
     handlePermissionError,
 } from './patcher';
+import { checkForUpdates } from './updateChecker';
 
 let statusBarItem: vscode.StatusBarItem;
 let fileWatcher: fs.FSWatcher | undefined;
@@ -23,7 +24,10 @@ function getPatchState(mainJsPath: string): PatchState {
     if (isPatched(mainJsPath)) {
         return 'on';
     }
-    return hasBackups(mainJsPath) ? 'update-needed' : 'off';
+    if (hasBackups(mainJsPath)) {
+        return 'update-needed';
+    }
+    return 'off';
 }
 
 function updateStatusBar(state: PatchState): void {
@@ -111,7 +115,7 @@ async function enableCommand(context: vscode.ExtensionContext): Promise<void> {
     const mainJsPath = validation.mainJsPath;
     const outDir = getAppOutDir();
 
-    const dryRun = getDryRunSummary(mainJsPath, context.extensionPath);
+    const dryRun = getDryRunSummary(mainJsPath);
     const detail = dryRun.map((a) => `• ${a}`).join('\n');
 
     const confirm = await vscode.window.showWarningMessage(
@@ -125,8 +129,8 @@ async function enableCommand(context: vscode.ExtensionContext): Promise<void> {
     }
 
     try {
+        copyLoader(outDir, context.extensionPath);
         applyPatch(mainJsPath);
-        copyRtlScript(outDir, context.extensionPath);
         updateStatusBar('on');
         setupFileWatcher(mainJsPath, context);
 
@@ -225,7 +229,7 @@ async function reapplyCommand(context: vscode.ExtensionContext): Promise<void> {
     const outDir = getAppOutDir();
 
     try {
-        copyRtlScript(outDir, context.extensionPath);
+        copyLoader(outDir, context.extensionPath);
         applyPatch(mainJsPath);
         updateStatusBar('on');
         setupFileWatcher(mainJsPath, context);
@@ -241,6 +245,15 @@ async function reapplyCommand(context: vscode.ExtensionContext): Promise<void> {
         }
     } catch (err) {
         vscode.window.showErrorMessage(`Cursor RTL: ${handlePermissionError(err)}`);
+    }
+}
+
+function refreshLoader(context: vscode.ExtensionContext): void {
+    try {
+        const outDir = getAppOutDir();
+        copyLoader(outDir, context.extensionPath);
+    } catch {
+        // Non-critical — loader is self-discovering, works even if outdated
     }
 }
 
@@ -320,7 +333,12 @@ export function activate(context: vscode.ExtensionContext): void {
 
     const mainJsPath = getMainJsPath();
     const state = getPatchState(mainJsPath);
+
     updateStatusBar(state);
+
+    if (state === 'on') {
+        refreshLoader(context);
+    }
 
     if (fs.existsSync(mainJsPath) && (state === 'on' || state === 'update-needed')) {
         setupFileWatcher(mainJsPath, context);
@@ -332,6 +350,9 @@ export function activate(context: vscode.ExtensionContext): void {
             updateStatusBar(currentState);
         }
     }, null, context.subscriptions);
+
+    const extensionVersion = context.extension.packageJSON.version as string;
+    checkForUpdates(extensionVersion).catch(() => {});
 }
 
 export function deactivate(): void {
