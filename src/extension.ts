@@ -14,6 +14,7 @@ import { checkForUpdates } from './updateChecker';
 
 let statusBarItem: vscode.StatusBarItem;
 let fileWatcher: fs.FSWatcher | undefined;
+let blinkInterval: ReturnType<typeof setInterval> | undefined;
 
 type PatchState = 'on' | 'off' | 'update-needed';
 
@@ -37,6 +38,11 @@ function updateStatusBar(state: PatchState): void {
         return;
     }
 
+    if (blinkInterval) {
+        clearInterval(blinkInterval);
+        blinkInterval = undefined;
+    }
+
     switch (state) {
         case 'on':
             statusBarItem.text = '$(check) RTL: ON';
@@ -45,8 +51,15 @@ function updateStatusBar(state: PatchState): void {
             break;
         case 'off':
             statusBarItem.text = '$(circle-slash) RTL: OFF';
-            statusBarItem.backgroundColor = undefined;
+            statusBarItem.backgroundColor = new vscode.ThemeColor(
+                'statusBarItem.errorBackground'
+            );
             statusBarItem.tooltip = 'RTL patch is not applied. Click for options.';
+            blinkInterval = setInterval(() => {
+                statusBarItem.backgroundColor = statusBarItem.backgroundColor
+                    ? undefined
+                    : new vscode.ThemeColor('statusBarItem.errorBackground');
+            }, 800);
             break;
         case 'update-needed':
             statusBarItem.text = '$(warning) RTL: UPDATE NEEDED';
@@ -55,6 +68,11 @@ function updateStatusBar(state: PatchState): void {
             );
             statusBarItem.tooltip =
                 'Cursor was updated and the RTL patch needs to be re-applied. Click for options.';
+            blinkInterval = setInterval(() => {
+                statusBarItem.backgroundColor = statusBarItem.backgroundColor
+                    ? undefined
+                    : new vscode.ThemeColor('statusBarItem.warningBackground');
+            }, 800);
             break;
     }
 
@@ -356,6 +374,10 @@ export function activate(context: vscode.ExtensionContext): void {
 }
 
 export function deactivate(): void {
+    if (blinkInterval) {
+        clearInterval(blinkInterval);
+        blinkInterval = undefined;
+    }
     if (fileWatcher) {
         fileWatcher.close();
         fileWatcher = undefined;
