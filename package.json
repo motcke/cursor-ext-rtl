@@ -2,7 +2,7 @@
   "name": "cursor-rtl",
   "displayName": "Cursor RTL",
   "description": "Smart multi-language RTL support for Cursor AI Chat. Uses a purpose-built algorithm that auto-detects text direction per element - Hebrew, Arabic and Persian text is right-aligned while English stays left-aligned.",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "publisher": "motcke",
   "license": "Apache-2.0",
   "icon": "resources/icon.png",
@@ -14,40 +14,16 @@
   "engines": {
     "vscode": "^1.85.0"
   },
-  "categories": [
-    "Other"
-  ],
-  "keywords": [
-    "rtl",
-    "arabic",
-    "hebrew",
-    "persian",
-    "cursor",
-    "chat",
-    "right-to-left"
-  ],
+  "categories": ["Other"],
+  "keywords": ["rtl", "arabic", "hebrew", "persian", "cursor", "chat", "right-to-left"],
   "main": "./dist/extension.js",
-  "activationEvents": [
-    "onStartupFinished"
-  ],
+  "activationEvents": ["onStartupFinished"],
   "contributes": {
     "commands": [
-      {
-        "command": "cursorRtl.enable",
-        "title": "Cursor RTL: Enable RTL Support"
-      },
-      {
-        "command": "cursorRtl.disable",
-        "title": "Cursor RTL: Disable RTL Support"
-      },
-      {
-        "command": "cursorRtl.status",
-        "title": "Cursor RTL: Check Status"
-      },
-      {
-        "command": "cursorRtl.reapply",
-        "title": "Cursor RTL: Re-apply After Update"
-      }
+      { "command": "cursorRtl.enable", "title": "Cursor RTL: Enable RTL Support" },
+      { "command": "cursorRtl.disable", "title": "Cursor RTL: Disable RTL Support" },
+      { "command": "cursorRtl.status", "title": "Cursor RTL: Check Status" },
+      { "command": "cursorRtl.reapply", "title": "Cursor RTL: Re-apply After Update" }
     ],
     "configuration": {
       "title": "Cursor RTL",
@@ -73,10 +49,13 @@
     "vscode:uninstall": "node dist/uninstall.js"
   },
   "devDependencies": {
-    "@types/vscode": "^1.85.0",
     "@types/node": "^20.0.0",
+    "@types/vscode": "^1.85.0",
+    "@vscode/vsce": "^3.0.0",
     "esbuild": "^0.24.0",
-    "typescript": "^5.5.0",
-    "@vscode/vsce": "^3.0.0"
+    "typescript": "^5.5.0"
+  },
+  "dependencies": {
+    "applicationinsights": "^3.14.0"
   }
 }

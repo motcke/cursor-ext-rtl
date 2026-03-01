@@ -1,9 +1,23 @@
 (function() {
+    var RTL_LOG = "[Cursor RTL]";
+    console.log(RTL_LOG, "rtl.js started at", new Date().toISOString());
+    
     const style = document.createElement('style');
     style.textContent = `
         .aislash-editor-placeholder {
             right: 15px !important;
             left: auto !important;
+        }
+
+        .aislash-editor-input p,
+        .aislash-editor-input-readonly p {
+            unicode-bidi: plaintext !important;
+            text-align: start !important;
+        }
+
+        .composer-rendered-message .composer-human-message div:has(> div > .aislash-editor-input-readonly),
+        .composer-rendered-message .composer-human-message div:has(> div > .aislash-editor-input) {
+            flex-grow: 1 !important;
         }
 
         .markdown-root ul,
@@ -56,12 +70,11 @@
 
         #composer-toolbar-section,
         .composer-questionnaire-toolbar {
-            direction: rtl !important;
-            text-align: right !important;
+            unicode-bidi: plaintext !important;
+            text-align: start !important;
         }
 
         .composer-questionnaire-toolbar-header {
-            direction: rtl !important;
             display: flex !important;
             flex-direction: row !important;
             justify-content: space-between !important;
@@ -75,14 +88,12 @@
         }
 
         .composer-questionnaire-toolbar-option-label {
-            margin-right: 8px !important;
-            margin-left: 0 !important;
+            margin-inline-end: 8px !important;
+            margin-inline-start: 0 !important;
         }
 
         .composer-questionnaire-toolbar-actions {
-            direction: rtl !important;
             display: flex !important;
-            flex-direction: row-reverse !important;
             justify-content: flex-end !important;
         }
 
@@ -123,10 +134,10 @@
         '.markdown-section',
         '.composer-human-message p',
         '.composer-human-message div',
-        '.composer-human-message span',
         '.aislash-editor-input p',
         '.aislash-editor-input-readonly p',
         '.aislash-editor-placeholder',
+        '.composer-questionnaire-toolbar',
         '.composer-questionnaire-toolbar-question-label',
         '.composer-questionnaire-toolbar-option-label',
         '.composer-questionnaire-toolbar-freeform-input',
@@ -243,11 +254,13 @@
         }
     }
 
+    var appliedCount = 0;
     function applyDir(els) {
         for (var i = 0; i < els.length; i++) {
             if (els[i].closest(SCAN_EXCLUDE)) continue;
             if (els[i].getAttribute('dir') === 'auto') continue;
             els[i].setAttribute('dir', 'auto');
+            appliedCount++;
         }
     }
 
@@ -285,14 +298,20 @@
     attachObserver(document.documentElement);
     attachAllCurrentShadowObservers();
     scheduleScan();
-    setTimeout(scanAll, 500);
+    setTimeout(function() {
+        scanAll();
+        console.log(RTL_LOG, "First scan done, applied dir to", appliedCount, "elements");
+    }, 500);
     setTimeout(scanAll, 2000);
     setTimeout(scanAll, 5000);
     var planScanCount = 0;
     var planScanInterval = setInterval(function() {
         attachAllCurrentShadowObservers();
         scheduleScan();
-        if (++planScanCount >= 5) clearInterval(planScanInterval);
+        if (++planScanCount >= 5) {
+            clearInterval(planScanInterval);
+            console.log(RTL_LOG, "Total dir=auto applied so far:", appliedCount);
+        }
     }, 3000);
 
     console.log("%c RTL Auto-Detection Active! ", "background: #e91e63; color: #fff; font-size: 14px; padding: 4px; border-radius: 4px;");

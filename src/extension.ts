@@ -6,13 +6,17 @@ import {
     hasBackups,
     applyPatch,
     removePatch,
-    copyRtlScript,
+    copyLoader,
     getDryRunSummary,
     handlePermissionError,
 } from './patcher';
+import { checkForUpdates } from './updateChecker';
+import { init as initActions, action, error as actionError, dispose as disposeActions } from './actions';
 
 let statusBarItem: vscode.StatusBarItem;
 let fileWatcher: fs.FSWatcher | undefined;
+let blinkInterval: ReturnType<typeof setInterval> | undefined;
+let blinkTimeout: ReturnType<typeof setTimeout> | undefined;
 
 type PatchState = 'on' | 'off' | 'update-needed';
 
@@ -23,7 +27,29 @@ function getPatchState(mainJsPath: string): PatchState {
     if (isPatched(mainJsPath)) {
         return 'on';
     }
-    return hasBackups(mainJsPath) ? 'update-needed' : 'off';
+    if (hasBackups(mainJsPath)) {
+        return 'update-needed';
+    }
+    return 'off';
+}
+
+function startBlink(themeColorId: string): void {
+    const BLINK_DURATION_MS = 60_000;
+
+    statusBarItem.backgroundColor = new vscode.ThemeColor(themeColorId);
+    blinkInterval = setInterval(() => {
+        statusBarItem.backgroundColor = statusBarItem.backgroundColor
+            ? undefined
+            : new vscode.ThemeColor(themeColorId);
+    }, 800);
+    blinkTimeout = setTimeout(() => {
+        if (blinkInterval) {
+            clearInterval(blinkInterval);
+            blinkInterval = undefined;
+        }
+        statusBarItem.backgroundColor = new vscode.ThemeColor(themeColorId);
+        blinkTimeout = undefined;
+    }, BLINK_DURATION_MS);
 }
 
 function updateStatusBar(state: PatchState): void {
@@ -31,6 +57,15 @@ function updateStatusBar(state: PatchState): void {
     if (!config.get<boolean>('showStatusBar', true)) {
         statusBarItem.hide();
         return;
+    }
+
+    if (blinkInterval) {
+        clearInterval(blinkInterval);
+        blinkInterval = undefined;
+    }
+    if (blinkTimeout) {
+        clearTimeout(blinkTimeout);
+        blinkTimeout = undefined;
     }
 
     switch (state) {
@@ -41,16 +76,14 @@ function updateStatusBar(state: PatchState): void {
             break;
         case 'off':
             statusBarItem.text = '$(circle-slash) RTL: OFF';
-            statusBarItem.backgroundColor = undefined;
             statusBarItem.tooltip = 'RTL patch is not applied. Click for options.';
+            startBlink('statusBarItem.errorBackground');
             break;
         case 'update-needed':
             statusBarItem.text = '$(warning) RTL: UPDATE NEEDED';
-            statusBarItem.backgroundColor = new vscode.ThemeColor(
-                'statusBarItem.warningBackground'
-            );
             statusBarItem.tooltip =
                 'Cursor was updated and the RTL patch needs to be re-applied. Click for options.';
+            startBlink('statusBarItem.warningBackground');
             break;
     }
 
@@ -111,7 +144,7 @@ async function enableCommand(context: vscode.ExtensionContext): Promise<void> {
     const mainJsPath = validation.mainJsPath;
     const outDir = getAppOutDir();
 
-    const dryRun = getDryRunSummary(mainJsPath, context.extensionPath);
+    const dryRun = getDryRunSummary(mainJsPath);
     const detail = dryRun.map((a) => `• ${a}`).join('\n');
 
     const confirm = await vscode.window.showWarningMessage(
@@ -125,8 +158,9 @@ async function enableCommand(context: vscode.ExtensionContext): Promise<void> {
     }
 
     try {
+        copyLoader(outDir, context.extensionPath);
         applyPatch(mainJsPath);
-        copyRtlScript(outDir, context.extensionPath);
+        action('patch_apply');
         updateStatusBar('on');
         setupFileWatcher(mainJsPath, context);
 
@@ -140,6 +174,7 @@ async function enableCommand(context: vscode.ExtensionContext): Promise<void> {
             await vscode.commands.executeCommand('workbench.action.quit');
         }
     } catch (err) {
+        actionError(err, { op: 'patch_apply' });
         vscode.window.showErrorMessage(`Cursor RTL: ${handlePermissionError(err)}`);
     }
 }
@@ -165,6 +200,7 @@ async function disableCommand(): Promise<void> {
 
     try {
         removePatch(mainJsPath);
+        action('patch_remove');
         updateStatusBar('off');
 
         const restart = await vscode.window.showInformationMessage(
@@ -177,6 +213,7 @@ async function disableCommand(): Promise<void> {
             await vscode.commands.executeCommand('workbench.action.quit');
         }
     } catch (err) {
+        actionError(err, { op: 'patch_remove' });
         vscode.window.showErrorMessage(`Cursor RTL: ${handlePermissionError(err)}`);
     }
 }
@@ -189,6 +226,7 @@ async function statusCommand(): Promise<void> {
     }
 
     const state = getPatchState(validation.mainJsPath);
+    action('status_check', { state });
 
     switch (state) {
         case 'on':
@@ -225,8 +263,9 @@ async function reapplyCommand(context: vscode.ExtensionContext): Promise<void> {
     const outDir = getAppOutDir();
 
     try {
-        copyRtlScript(outDir, context.extensionPath);
+        copyLoader(outDir, context.extensionPath);
         applyPatch(mainJsPath);
+        action('patch_reapply');
         updateStatusBar('on');
         setupFileWatcher(mainJsPath, context);
 
@@ -240,7 +279,17 @@ async function reapplyCommand(context: vscode.ExtensionContext): Promise<void> {
             await vscode.commands.executeCommand('workbench.action.quit');
         }
     } catch (err) {
+        actionError(err, { op: 'patch_reapply' });
         vscode.window.showErrorMessage(`Cursor RTL: ${handlePermissionError(err)}`);
+    }
+}
+
+function refreshLoader(context: vscode.ExtensionContext): void {
+    try {
+        const outDir = getAppOutDir();
+        copyLoader(outDir, context.extensionPath);
+    } catch {
+        // Non-critical — loader is self-discovering, works even if outdated
     }
 }
 
@@ -258,6 +307,7 @@ function setupFileWatcher(
                 setTimeout(async () => {
                     const state = getPatchState(mainJsPath);
                     if (state === 'update-needed' || state === 'off') {
+                        action('update_detect');
                         updateStatusBar('update-needed');
 
                         const config = vscode.workspace.getConfiguration('cursorRtl');
@@ -283,6 +333,11 @@ function setupFileWatcher(
 }
 
 export function activate(context: vscode.ExtensionContext): void {
+    const channel = (process.env as Record<string, string | undefined>).CURSOR_CHANNEL
+        ?? (process.env as Record<string, string | undefined>).VSCODE_CHANNEL
+        ?? '';
+    initActions({ clientVersion: vscode.version, channel });
+
     statusBarItem = vscode.window.createStatusBarItem(
         vscode.StatusBarAlignment.Right,
         100
@@ -320,7 +375,12 @@ export function activate(context: vscode.ExtensionContext): void {
 
     const mainJsPath = getMainJsPath();
     const state = getPatchState(mainJsPath);
+
     updateStatusBar(state);
+
+    if (state === 'on') {
+        refreshLoader(context);
+    }
 
     if (fs.existsSync(mainJsPath) && (state === 'on' || state === 'update-needed')) {
         setupFileWatcher(mainJsPath, context);
@@ -332,11 +392,29 @@ export function activate(context: vscode.ExtensionContext): void {
             updateStatusBar(currentState);
         }
     }, null, context.subscriptions);
+
+    const mainJsState = getPatchState(mainJsPath);
+    action('ext_start', { state: mainJsState, platform: process.platform });
+
+    const extensionVersion = context.extension.packageJSON.version as string;
+    checkForUpdates(extensionVersion).then((found) => {
+        if (found) action('version_available');
+    }).catch(() => {});
 }
 
-export function deactivate(): void {
+export function deactivate(): Promise<void> {
+    action('ext_stop');
+    if (blinkInterval) {
+        clearInterval(blinkInterval);
+        blinkInterval = undefined;
+    }
+    if (blinkTimeout) {
+        clearTimeout(blinkTimeout);
+        blinkTimeout = undefined;
+    }
     if (fileWatcher) {
         fileWatcher.close();
         fileWatcher = undefined;
     }
+    return disposeActions().catch(() => {});
 }
