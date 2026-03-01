@@ -2,7 +2,7 @@
   "name": "cursor-rtl",
   "displayName": "Cursor RTL",
   "description": "Smart multi-language RTL support for Cursor AI Chat. Uses a purpose-built algorithm that auto-detects text direction per element - Hebrew, Arabic and Persian text is right-aligned while English stays left-aligned.",
-  "version": "1.1.0",
+  "version": "1.1.1",
   "publisher": "motcke",
   "license": "Apache-2.0",
   "icon": "resources/icon.png",
