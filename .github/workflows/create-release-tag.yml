@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
 
 jobs:
-  create-tag:
+  release:
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -31,6 +31,27 @@ jobs:
           fi
           echo "Tag $TAG does not exist yet — proceeding."
 
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Type-check
+        run: npx tsc --noEmit
+
+      - name: Build
+        run: npm run build
+
+      - name: Package VSIX
+        run: npx vsce package --no-dependencies -o cursor-rtl.vsix
+
+      - name: Generate SHA-256 checksum
+        run: sha256sum cursor-rtl.vsix > cursor-rtl.vsix.sha256
+
       - name: Create and push tag
         run: |
           TAG="${{ steps.version.outputs.tag }}"
@@ -39,3 +60,12 @@ jobs:
           git tag "$TAG"
           git push origin "$TAG"
           echo "Tag $TAG created and pushed successfully."
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.version.outputs.tag }}
+          files: |
+            cursor-rtl.vsix
+            cursor-rtl.vsix.sha256
+          generate_release_notes: true
