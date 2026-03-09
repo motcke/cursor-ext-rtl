@@ -97,6 +97,19 @@
             justify-content: flex-end !important;
         }
 
+        .markdown-root p,
+        .markdown-root li,
+        .markdown-root h1,
+        .markdown-root h2,
+        .markdown-root h3,
+        .markdown-root h4,
+        .markdown-root h5,
+        .markdown-root h6,
+        .markdown-root blockquote {
+            unicode-bidi: plaintext !important;
+            text-align: start !important;
+        }
+
         .plan-editor .ProseMirror > h1,
         .plan-editor .ProseMirror > h2,
         .plan-editor .ProseMirror > h3,
@@ -132,6 +145,15 @@
 
     var DIR_SELECTOR = [
         '.markdown-section',
+        '.markdown-root p',
+        '.markdown-root li',
+        '.markdown-root h1',
+        '.markdown-root h2',
+        '.markdown-root h3',
+        '.markdown-root h4',
+        '.markdown-root h5',
+        '.markdown-root h6',
+        '.markdown-root blockquote',
         '.composer-human-message p',
         '.composer-human-message div',
         '.aislash-editor-input p',
