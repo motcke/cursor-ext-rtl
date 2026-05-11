@@ -1,8 +1,8 @@
-import * as vscode from 'vscode';
 import * as https from 'https';
 
 const GITHUB_REPO = 'motcke/cursor-ext-rtl';
 const RELEASES_URL = `https://api.github.com/repos/${GITHUB_REPO}/releases/latest`;
+const RELEASES_LATEST_URL = `https://github.com/${GITHUB_REPO}/releases/latest`;
 
 interface GitHubAsset {
     name: string;
@@ -15,8 +15,34 @@ interface GitHubRelease {
     assets: GitHubAsset[];
 }
 
+export type UpdateCheckResult =
+    | {
+        status: 'updateAvailable';
+        currentVersion: string;
+        remoteVersion: string;
+        releaseUrl: string;
+        vsixDownloadUrl?: string;
+    }
+    | {
+        status: 'upToDate';
+        currentVersion: string;
+        remoteVersion?: string;
+        releaseUrl?: string;
+    }
+    | {
+        status: 'failed';
+        currentVersion: string;
+        error: string;
+    };
+
 function parseVersion(tag: string): number[] {
-    return tag.replace(/^v/, '').split('.').map(Number);
+    return tag
+        .replace(/^v/i, '')
+        .split('.')
+        .map((part) => {
+            const match = part.match(/^\d+/);
+            return match ? Number(match[0]) : 0;
+        });
 }
 
 function isNewer(remote: string, local: string): boolean {
@@ -83,36 +109,36 @@ function collectResponse(
     res.on('error', reject);
 }
 
-export async function checkForUpdates(currentVersion: string): Promise<boolean> {
+export async function checkForExtensionUpdate(currentVersion: string): Promise<UpdateCheckResult> {
     let release: GitHubRelease;
     try {
         release = await fetchLatestRelease();
-    } catch {
-        return false;
+    } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        return {
+            status: 'failed',
+            currentVersion,
+            error: message,
+        };
     }
 
     if (!release.tag_name || !isNewer(release.tag_name, currentVersion)) {
-        return false;
+        return {
+            status: 'upToDate',
+            currentVersion,
+            remoteVersion: release.tag_name?.replace(/^v/i, ''),
+            releaseUrl: release.html_url || RELEASES_LATEST_URL,
+        };
     }
 
     const vsixAsset = release.assets.find((a) => a.name.endsWith('.vsix'));
-    const remoteVersion = release.tag_name.replace(/^v/, '');
+    const remoteVersion = release.tag_name.replace(/^v/i, '');
 
-    const message = `Cursor RTL: A new version is available (${remoteVersion}). Update now?`;
-
-    const actions: string[] = [];
-    if (vsixAsset) {
-        actions.push('Download VSIX');
-    }
-    actions.push('Open Release Page');
-
-    const choice = await vscode.window.showInformationMessage(message, ...actions);
-
-    if (choice === 'Download VSIX' && vsixAsset) {
-        vscode.env.openExternal(vscode.Uri.parse(vsixAsset.browser_download_url));
-    } else if (choice === 'Open Release Page') {
-        vscode.env.openExternal(vscode.Uri.parse(release.html_url));
-    }
-
-    return true;
+    return {
+        status: 'updateAvailable',
+        currentVersion,
+        remoteVersion,
+        releaseUrl: release.html_url || RELEASES_LATEST_URL,
+        vsixDownloadUrl: vsixAsset?.browser_download_url,
+    };
 }

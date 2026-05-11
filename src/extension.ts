@@ -10,15 +10,24 @@ import {
     getDryRunSummary,
     handlePermissionError,
 } from './patcher';
-import { checkForUpdates } from './updateChecker';
+import { checkForExtensionUpdate, UpdateCheckResult } from './updateChecker';
 import { init as initActions, action, error as actionError, dispose as disposeActions } from './actions';
 
 let statusBarItem: vscode.StatusBarItem;
 let fileWatcher: fs.FSWatcher | undefined;
 let blinkInterval: ReturnType<typeof setInterval> | undefined;
 let blinkTimeout: ReturnType<typeof setTimeout> | undefined;
+let startupUpdateCheckTimeout: ReturnType<typeof setTimeout> | undefined;
+let updateCheckInterval: ReturnType<typeof setInterval> | undefined;
 
 type PatchState = 'on' | 'off' | 'update-needed';
+type UpdateCheckMode = 'startup' | 'periodic' | 'manual';
+
+const STARTUP_UPDATE_CHECK_DELAY_MS = 5_000;
+const MS_PER_HOUR = 60 * 60 * 1000;
+const LAST_NOTIFIED_VERSION_KEY = 'cursorRtl.lastNotifiedExtensionVersion';
+const REMIND_LATER_VERSION_KEY = 'cursorRtl.updateRemindLaterVersion';
+const REMIND_LATER_UNTIL_KEY = 'cursorRtl.updateRemindLaterUntil';
 
 function getPatchState(mainJsPath: string): PatchState {
     if (!fs.existsSync(mainJsPath)) {
@@ -252,6 +261,138 @@ async function statusCommand(): Promise<void> {
     }
 }
 
+function getExtensionVersion(context: vscode.ExtensionContext): string {
+    const version = context.extension.packageJSON.version;
+    return typeof version === 'string' ? version : '0.0.0';
+}
+
+function getNumberSetting(name: string, defaultValue: number, minValue: number): number {
+    const config = vscode.workspace.getConfiguration('cursorRtl');
+    const value = config.get<number>(name, defaultValue);
+    return Math.max(minValue, Number.isFinite(value) ? value : defaultValue);
+}
+
+function getUpdateCheckConfig(): {
+    enabled: boolean;
+    intervalMs: number;
+    remindLaterMs: number;
+} {
+    const config = vscode.workspace.getConfiguration('cursorRtl');
+    return {
+        enabled: config.get<boolean>('checkForExtensionUpdates', true),
+        intervalMs: getNumberSetting('updateCheckIntervalHours', 6, 1) * MS_PER_HOUR,
+        remindLaterMs: getNumberSetting('updateRemindLaterHours', 24, 1) * MS_PER_HOUR,
+    };
+}
+
+async function showExtensionUpdateNotification(
+    context: vscode.ExtensionContext,
+    result: Extract<UpdateCheckResult, { status: 'updateAvailable' }>,
+    mode: UpdateCheckMode,
+    remindLaterMs: number
+): Promise<void> {
+    if (mode !== 'manual') {
+        const lastNotifiedVersion = context.globalState.get<string>(LAST_NOTIFIED_VERSION_KEY);
+        const remindLaterVersion = context.globalState.get<string>(REMIND_LATER_VERSION_KEY);
+        const remindLaterUntil = context.globalState.get<number>(REMIND_LATER_UNTIL_KEY, 0);
+        const canRemindAgain =
+            remindLaterVersion === result.remoteVersion && Date.now() >= remindLaterUntil;
+
+        if (lastNotifiedVersion === result.remoteVersion && !canRemindAgain) {
+            return;
+        }
+
+        await context.globalState.update(LAST_NOTIFIED_VERSION_KEY, result.remoteVersion);
+    }
+
+    action('version_available', { mode, version: result.remoteVersion });
+
+    const actions = ['Open Release Page'];
+    if (result.vsixDownloadUrl) {
+        actions.push('Download VSIX');
+    }
+    actions.push('Remind Later');
+
+    const message =
+        `Cursor RTL: A new version is available (${result.remoteVersion}). Update now?`;
+    const choice = await vscode.window.showInformationMessage(message, ...actions);
+
+    if (choice === 'Open Release Page') {
+        action('update_action_release_page', { mode, version: result.remoteVersion });
+        await context.globalState.update(REMIND_LATER_UNTIL_KEY, undefined);
+        await vscode.env.openExternal(vscode.Uri.parse(result.releaseUrl));
+    } else if (choice === 'Download VSIX' && result.vsixDownloadUrl) {
+        action('update_action_download_vsix', { mode, version: result.remoteVersion });
+        await context.globalState.update(REMIND_LATER_UNTIL_KEY, undefined);
+        await vscode.env.openExternal(vscode.Uri.parse(result.vsixDownloadUrl));
+    } else if (choice === 'Remind Later') {
+        action('update_action_remind_later', { mode, version: result.remoteVersion });
+        await context.globalState.update(REMIND_LATER_VERSION_KEY, result.remoteVersion);
+        await context.globalState.update(REMIND_LATER_UNTIL_KEY, Date.now() + remindLaterMs);
+    }
+}
+
+async function runExtensionUpdateCheck(
+    context: vscode.ExtensionContext,
+    mode: UpdateCheckMode
+): Promise<void> {
+    const config = getUpdateCheckConfig();
+    if (!config.enabled && mode !== 'manual') {
+        return;
+    }
+
+    action('update_check_started', { mode });
+    const result = await checkForExtensionUpdate(getExtensionVersion(context));
+
+    if (result.status === 'failed') {
+        action('update_check_failed', { mode, error: result.error });
+        if (mode === 'manual') {
+            vscode.window.showWarningMessage(
+                `Cursor RTL: Could not check for extension updates. ${result.error}`
+            );
+        }
+        return;
+    }
+
+    if (result.status === 'upToDate') {
+        if (mode === 'manual') {
+            const version = result.remoteVersion ?? result.currentVersion;
+            vscode.window.showInformationMessage(`Cursor RTL is up to date (${version}).`);
+        }
+        return;
+    }
+
+    await showExtensionUpdateNotification(context, result, mode, config.remindLaterMs);
+}
+
+function clearScheduledUpdateChecks(): void {
+    if (startupUpdateCheckTimeout) {
+        clearTimeout(startupUpdateCheckTimeout);
+        startupUpdateCheckTimeout = undefined;
+    }
+    if (updateCheckInterval) {
+        clearInterval(updateCheckInterval);
+        updateCheckInterval = undefined;
+    }
+}
+
+function scheduleExtensionUpdateChecks(context: vscode.ExtensionContext): void {
+    clearScheduledUpdateChecks();
+
+    const config = getUpdateCheckConfig();
+    if (!config.enabled) {
+        return;
+    }
+
+    startupUpdateCheckTimeout = setTimeout(() => {
+        void runExtensionUpdateCheck(context, 'startup');
+    }, STARTUP_UPDATE_CHECK_DELAY_MS);
+
+    updateCheckInterval = setInterval(() => {
+        void runExtensionUpdateCheck(context, 'periodic');
+    }, config.intervalMs);
+}
+
 async function reapplyCommand(context: vscode.ExtensionContext): Promise<void> {
     const validation = validatePaths();
     if (!validation.valid) {
@@ -373,6 +514,12 @@ export function activate(context: vscode.ExtensionContext): void {
         )
     );
 
+    context.subscriptions.push(
+        vscode.commands.registerCommand('cursorRtl.checkForUpdates', () =>
+            runExtensionUpdateCheck(context, 'manual')
+        )
+    );
+
     const mainJsPath = getMainJsPath();
     const state = getPatchState(mainJsPath);
 
@@ -391,15 +538,19 @@ export function activate(context: vscode.ExtensionContext): void {
             const currentState = getPatchState(mainJsPath);
             updateStatusBar(currentState);
         }
+        if (
+            e.affectsConfiguration('cursorRtl.checkForExtensionUpdates') ||
+            e.affectsConfiguration('cursorRtl.updateCheckIntervalHours') ||
+            e.affectsConfiguration('cursorRtl.updateRemindLaterHours')
+        ) {
+            scheduleExtensionUpdateChecks(context);
+        }
     }, null, context.subscriptions);
 
     const mainJsState = getPatchState(mainJsPath);
     action('ext_start', { state: mainJsState, platform: process.platform });
 
-    const extensionVersion = context.extension.packageJSON.version as string;
-    checkForUpdates(extensionVersion).then((found) => {
-        if (found) action('version_available');
-    }).catch(() => {});
+    scheduleExtensionUpdateChecks(context);
 }
 
 export function deactivate(): Promise<void> {
@@ -416,5 +567,6 @@ export function deactivate(): Promise<void> {
         fileWatcher.close();
         fileWatcher = undefined;
     }
+    clearScheduledUpdateChecks();
     return disposeActions().catch(() => {});
 }
