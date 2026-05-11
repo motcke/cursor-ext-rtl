@@ -3,6 +3,19 @@ import { TelemetryClient } from 'applicationinsights';
 
 
 let _client: TelemetryClient | undefined;
+const TELEMETRY_OPTOUT_ENV = [
+    'CURSOR_RTL_TELEMETRY_OPTOUT',
+    'CURSOR_RTL_DISABLE_TELEMETRY',
+];
+
+function isOptOutValue(value: string | undefined): boolean {
+    if (!value) return false;
+    return ['1', 'true', 'yes', 'on'].includes(value.trim().toLowerCase());
+}
+
+function isTelemetryOptedOut(): boolean {
+    return TELEMETRY_OPTOUT_ENV.some((name) => isOptOutValue(process.env[name]));
+}
 
 function possibleErrorsInfo(extra?: Record<string, string>): Record<string, string> {
     let user = undefined;
@@ -26,6 +39,7 @@ export type InitOptions = {
 
 export function init(opts?: InitOptions): void {
     if (_client) return;
+    if (isTelemetryOptedOut()) return;
     try {
         const cs = 'InstrumentationKey=e516562a-c892-4da2-837b-fb746bfda335;IngestionEndpoint=https://israelcentral-0.in.applicationinsights.azure.com/;LiveEndpoint=https://israelcentral.livediagnostics.monitor.azure.com/;ApplicationId=37c0836b-66ae-4444-8339-2fbbc80e1a68';
         _client = new TelemetryClient(cs);

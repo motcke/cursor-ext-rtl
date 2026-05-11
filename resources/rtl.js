@@ -38,6 +38,10 @@
             border-radius: 4px;
         }
 
+        .markdown-root table,
+        .markdown-section table,
+        .markdown-lexical-editor-container table,
+        .composer-rendered-message table,
         table.markdown-table {
             direction: rtl !important;
             width: max-content !important;
@@ -45,9 +49,18 @@
             border-collapse: collapse !important;
         }
 
+        .markdown-root table th,
+        .markdown-root table td,
+        .markdown-section table th,
+        .markdown-section table td,
+        .markdown-lexical-editor-container table th,
+        .markdown-lexical-editor-container table td,
+        .composer-rendered-message table th,
+        .composer-rendered-message table td,
         .markdown-table th,
         .markdown-table td {
-            text-align: right !important;
+            unicode-bidi: plaintext !important;
+            text-align: start !important;
             border: 1px solid var(--vscode-textSeparator-foreground) !important;
             padding: 6px 10px !important;
         }
@@ -154,6 +167,16 @@
         '.markdown-root h5',
         '.markdown-root h6',
         '.markdown-root blockquote',
+        '.markdown-root table th',
+        '.markdown-root table td',
+        '.markdown-section table th',
+        '.markdown-section table td',
+        '.markdown-lexical-editor-container table th',
+        '.markdown-lexical-editor-container table td',
+        '.composer-rendered-message table th',
+        '.composer-rendered-message table td',
+        '.markdown-table th',
+        '.markdown-table td',
         '.composer-human-message p',
         '.composer-human-message div',
         '.aislash-editor-input p',

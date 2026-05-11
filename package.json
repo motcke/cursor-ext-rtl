@@ -2,7 +2,7 @@
   "name": "cursor-rtl",
   "displayName": "Cursor RTL",
   "description": "Smart multi-language RTL support for Cursor AI Chat. Uses a purpose-built algorithm that auto-detects text direction per element - Hebrew, Arabic and Persian text is right-aligned while English stays left-aligned.",
-  "version": "1.1.2",
+  "version": "1.1.3",
   "publisher": "motcke",
   "license": "Apache-2.0",
   "icon": "resources/icon.png",
@@ -14,16 +14,44 @@
   "engines": {
     "vscode": "^1.85.0"
   },
-  "categories": ["Other"],
-  "keywords": ["rtl", "arabic", "hebrew", "persian", "cursor", "chat", "right-to-left"],
+  "categories": [
+    "Other"
+  ],
+  "keywords": [
+    "rtl",
+    "arabic",
+    "hebrew",
+    "persian",
+    "cursor",
+    "chat",
+    "right-to-left"
+  ],
   "main": "./dist/extension.js",
-  "activationEvents": ["onStartupFinished"],
+  "activationEvents": [
+    "onStartupFinished"
+  ],
   "contributes": {
     "commands": [
-      { "command": "cursorRtl.enable", "title": "Cursor RTL: Enable RTL Support" },
-      { "command": "cursorRtl.disable", "title": "Cursor RTL: Disable RTL Support" },
-      { "command": "cursorRtl.status", "title": "Cursor RTL: Check Status" },
-      { "command": "cursorRtl.reapply", "title": "Cursor RTL: Re-apply After Update" }
+      {
+        "command": "cursorRtl.enable",
+        "title": "Cursor RTL: Enable RTL Support"
+      },
+      {
+        "command": "cursorRtl.disable",
+        "title": "Cursor RTL: Disable RTL Support"
+      },
+      {
+        "command": "cursorRtl.status",
+        "title": "Cursor RTL: Check Status"
+      },
+      {
+        "command": "cursorRtl.reapply",
+        "title": "Cursor RTL: Re-apply After Update"
+      },
+      {
+        "command": "cursorRtl.checkForUpdates",
+        "title": "Cursor RTL: Check for Extension Updates"
+      }
     ],
     "configuration": {
       "title": "Cursor RTL",
@@ -37,6 +65,23 @@
           "type": "boolean",
           "default": true,
           "description": "Show RTL status indicator in the status bar"
+        },
+        "cursorRtl.checkForExtensionUpdates": {
+          "type": "boolean",
+          "default": true,
+          "description": "Automatically check GitHub releases for Cursor RTL extension updates"
+        },
+        "cursorRtl.updateCheckIntervalHours": {
+          "type": "number",
+          "default": 6,
+          "minimum": 1,
+          "description": "How often to check for Cursor RTL extension updates while Cursor is open"
+        },
+        "cursorRtl.updateRemindLaterHours": {
+          "type": "number",
+          "default": 24,
+          "minimum": 1,
+          "description": "How long to wait before showing the same update again after choosing Remind Later"
         }
       }
     }
@@ -46,13 +91,20 @@
     "watch": "node esbuild.js --watch",
     "package": "npm run build && vsce package --no-dependencies",
     "lint": "tsc --noEmit",
-    "vscode:uninstall": "node dist/uninstall.js"
+    "vscode:uninstall": "node dist/uninstall.js",
+    "visual:capture": "node scripts/visual-cursor-capture.mjs",
+    "visual:compare": "node scripts/visual-cursor-compare.mjs",
+    "visual:approve": "node scripts/visual-cursor-compare.mjs --update-baseline",
+    "visual": "npm run visual:capture && npm run visual:compare"
   },
   "devDependencies": {
     "@types/node": "^20.0.0",
     "@types/vscode": "^1.85.0",
     "@vscode/vsce": "^3.0.0",
-    "esbuild": "^0.24.0",
+    "esbuild": "^0.28.0",
+    "pixelmatch": "^7.2.0",
+    "playwright": "^1.59.1",
+    "pngjs": "^7.0.0",
     "typescript": "^5.5.0"
   },
   "dependencies": {
