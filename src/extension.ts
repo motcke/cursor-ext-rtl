@@ -477,7 +477,11 @@ export function activate(context: vscode.ExtensionContext): void {
     const channel = (process.env as Record<string, string | undefined>).CURSOR_CHANNEL
         ?? (process.env as Record<string, string | undefined>).VSCODE_CHANNEL
         ?? '';
-    initActions({ clientVersion: vscode.version, channel });
+    initActions({
+        clientVersion: vscode.version,
+        extensionVersion: getExtensionVersion(context),
+        channel,
+    });
 
     statusBarItem = vscode.window.createStatusBarItem(
         vscode.StatusBarAlignment.Right,

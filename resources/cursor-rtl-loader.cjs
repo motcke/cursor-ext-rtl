@@ -64,23 +64,32 @@
         return "";
     }
 
+    function isWorkbenchUrl(url) {
+        return typeof url === "string" && url.indexOf("workbench.html") !== -1;
+    }
+
     function injectIntoWebContents(wc, label) {
         if (!wc || wc.isDestroyed()) { log(label, "wc destroyed, skip"); return; }
-        if (wc.__rtlInjected) { log(label, "already injected, skip"); return; }
-        wc.__rtlInjected = true;
+        var currentUrl = "";
+        try { currentUrl = wc.getURL ? wc.getURL() : ""; } catch(e) { currentUrl = ""; }
+        if (!isWorkbenchUrl(currentUrl)) { log(label, "not workbench yet, skip url=" + currentUrl); return; }
+        if (wc.__rtlInjectedUrl === currentUrl) { log(label, "already injected for url, skip"); return; }
         try {
             var rtlPath = findRtlScript();
             if (!rtlPath) { log(label, "rtl.js NOT FOUND"); return; }
             var script = fs.readFileSync(rtlPath, "utf-8");
             log(label, "calling executeJavaScript, script length:", script.length);
             wc.executeJavaScript(script)
-                .then(function() { log(label, "executeJavaScript OK"); })
+                .then(function() {
+                    wc.__rtlInjectedUrl = currentUrl;
+                    log(label, "executeJavaScript OK");
+                })
                 .catch(function(err) {
-                    wc.__rtlInjected = false;
+                    wc.__rtlInjectedUrl = "";
                     log(label, "executeJavaScript ERROR:", err && err.message);
                 });
         } catch (e) {
-            wc.__rtlInjected = false;
+            wc.__rtlInjectedUrl = "";
             log(label, "inject error:", e.message);
         }
     }

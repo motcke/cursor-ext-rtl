@@ -1,6 +1,6 @@
 # Cursor RTL - Extension
 
-Smart multi-language RTL support for [Cursor](https://cursor.com) AI Chat. Uses a purpose-built algorithm that auto-detects text direction per element - Hebrew, Arabic and Persian text is automatically right-aligned, while English text stays left-aligned. Mixed-language conversations just work.
+Smart multi-language RTL support for [Cursor](https://cursor.com) AI Chat, Agents Window and Plan files. Uses a purpose-built algorithm that detects text direction per element - Hebrew, Arabic and Persian text is automatically right-aligned, while English text stays left-aligned. Mixed-language conversations just work.
 
 **[Documentation](https://motcke.github.io/cursor-ext-rtl/)**
 
@@ -30,13 +30,15 @@ Smart multi-language RTL support for [Cursor](https://cursor.com) AI Chat. Uses 
 
 ## Features
 
-- **Smart multi-language algorithm** - auto-detects text direction per element; only RTL text (Hebrew, Arabic, Persian) is right-aligned, English stays left-aligned
+- **Smart multi-language algorithm** - detects text direction per element using weighted RTL/LTR scoring, so Hebrew, Arabic and Persian content is right-aligned while English-heavy content stays left-aligned
 - **One-click Enable/Disable** via Command Palette
 - **Status Bar indicator** showing current RTL patch state (ON / OFF / UPDATE NEEDED)
 - **Automatic update detection** when Cursor updates overwrite `main.js`
 - **Extension update checks** with release-page and VSIX download shortcuts
 - **Auto re-apply option** to silently re-apply after Cursor updates
-- **Markdown table support** for mixed RTL/LTR table content
+- **Markdown table support** for mixed RTL/LTR table content, including Plan files
+- **Plan editor support** for Cursor's TipTap/ProseMirror-based `.plan.md` editor
+- **Agents Window support** including the agent conversation and side Plan view
 - **Transactional patching** with automatic backup and rollback on failure
 - **Cross-platform** support for Windows, macOS, and Linux
 
@@ -44,8 +46,8 @@ Smart multi-language RTL support for [Cursor](https://cursor.com) AI Chat. Uses 
 
 | Command | Description |
 |---------|-------------|
-| `Cursor RTL: Enable RTL Support` | Backup `main.js`, apply RTL patch, copy `rtl.js` |
-| `Cursor RTL: Disable RTL Support` | Restore `main.js` from backup, remove `rtl.js` |
+| `Cursor RTL: Enable RTL Support` | Backup `main.js`, apply RTL patch, copy the loader script |
+| `Cursor RTL: Disable RTL Support` | Restore `main.js` from backup, remove the loader script |
 | `Cursor RTL: Check Status` | Show whether the RTL patch is currently active |
 | `Cursor RTL: Re-apply After Update` | Re-apply patch after a Cursor update overwrote it |
 | `Cursor RTL: Check for Extension Updates` | Check GitHub releases for a newer extension version |
@@ -84,7 +86,19 @@ Click the status bar item for a quick-pick menu with available actions.
 This extension modifies two files inside Cursor's app directory:
 
 1. **`main.js`** - A single line is inserted after the copyright comment to load the RTL script
-2. **`rtl.js`** - The RTL styling/detection script is copied alongside `main.js`
+2. **`cursor-rtl-loader.cjs`** - A small loader is copied alongside `main.js`; it injects the extension's bundled `resources/rtl.js` into Cursor workbench windows
+
+The `rtl.js` styling and direction script stays in the installed extension directory, so it updates with the extension package.
+
+### Runtime behavior
+
+The loader runs in Cursor's Electron main process. It watches existing and newly-created browser windows, waits until a window has loaded `workbench.html`, and then injects `rtl.js` once for that workbench URL.
+
+Inside the workbench, `rtl.js` does an initial scan at startup, a few delayed startup scans while Cursor finishes rendering, and then re-scans on relevant DOM mutations, focus changes, and visibility changes. It is not a continuous polling loop.
+
+The direction algorithm assigns an explicit `dir="rtl"` or `dir="ltr"` to matching Markdown, chat and composer elements. For mixed text, RTL characters are scored against weighted LTR tokens; code-like tokens such as paths, API names and uppercase identifiers count less than regular English words. Lists and tables use the majority direction of their direct items or cells.
+
+Plan files and the Agents Window side Plan view use Cursor's TipTap/ProseMirror rich-text editor. Because that editor owns and may rewrite its DOM, Plan content also gets generated CSS rules scoped to the active Plan editor instead of relying only on direct `dir` attributes.
 
 ### Safety measures
 
@@ -101,7 +115,7 @@ To completely undo all changes:
 1. Run `Cursor RTL: Disable RTL Support` from the Command Palette
 2. Restart Cursor
 
-This restores the original `main.js` from the backup and removes the `rtl.js` file.
+This restores the original `main.js` from the backup and removes the copied loader script.
 
 ## Known Limitations
 
@@ -141,7 +155,7 @@ $env:CURSOR_RTL_TELEMETRY_OPTOUT = "1"
 
 Persistent opt-out can be configured at the operating system level by setting `CURSOR_RTL_TELEMETRY_OPTOUT=1` for the user or machine environment. `CURSOR_RTL_DISABLE_TELEMETRY=1` is also supported.
 
-Debug loader logs are disabled by default. If you explicitly enable `CURSOR_RTL_DEBUG_LOG=1`, a debug log may be written to the system temp directory, but it avoids recording Cursor window URLs and full local paths.
+The loader writes a local debug log to `cursor-rtl.log` in the user's home directory. It is not sent by telemetry, but it may include local extension paths and workbench URLs, so review it before sharing.
 
 ## Troubleshooting
 

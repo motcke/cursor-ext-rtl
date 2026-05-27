@@ -34,6 +34,7 @@ function possibleErrorsInfo(extra?: Record<string, string>): Record<string, stri
 
 export type InitOptions = {
     clientVersion?: string;
+    extensionVersion?: string;
     channel?: string;
 };
 
@@ -46,6 +47,7 @@ export function init(opts?: InitOptions): void {
         _client.config.enableAutoCollectPerformance = false;
         const extra: Record<string, string> = {};
         if (opts?.clientVersion) extra.clientVersion = opts.clientVersion;
+        if (opts?.extensionVersion) extra.extensionVersion = opts.extensionVersion;
         if (opts?.channel) extra.channel = opts.channel;
         _client.commonProperties = possibleErrorsInfo(extra);
     } catch {

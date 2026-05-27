@@ -37,6 +37,7 @@ Use this skill to take an RTL rendering issue from report to verified fix in thi
 
    - If `http://localhost:9222/json` is unavailable, stop and ask the user to relaunch Cursor with the flag.
    - Use the real Cursor chat/composer to create or locate a scenario matching the issue. For table issues, use a Markdown table containing mixed Hebrew and English.
+   - When iterating on `resources/rtl.js`, prefer direct CDP evaluation for temporary runtime testing before rebuilding/restarting Cursor. See "Runtime Injection During Development" below.
 
 4. Implement the smallest fix.
    - Prefer targeted changes in `resources/rtl.js`.
@@ -86,6 +87,38 @@ npm run visual:approve
    - Include the issue summary, root cause, implementation approach, and visual verification result.
    - Mention whether `npm run lint`, `npm run package`, `npm run visual:capture`, and `npm run visual` passed.
    - If visual approval is still needed, say exactly which image the user should review.
+
+## Runtime Injection During Development
+
+Use this only for local visual debugging while Cursor is already running with `--remote-debugging-port=9222`. This does not replace the real extension/loader verification path.
+
+1. Inject the current `resources/rtl.js` into active Cursor workbench pages with CDP `Runtime.evaluate`:
+
+```powershell
+node -e "const { chromium } = require('playwright'); const fs = require('fs'); (async () => { const browser = await chromium.connectOverCDP('http://localhost:9222'); const script = fs.readFileSync('resources/rtl.js', 'utf8'); for (const context of browser.contexts()) { for (const page of context.pages()) { if (!page.url().includes('workbench.html')) continue; await page.evaluate(script); await page.waitForTimeout(1000); const state = await page.evaluate(() => ({ title: document.title, hasScan: typeof window.__cursorRtlScanAll === 'function', styles: Array.from(document.querySelectorAll('style')).some(s => (s.textContent || '').includes('.markdown-table-container')) })); console.log(JSON.stringify(state)); } } await browser.close(); })().catch(e => { console.error(e); process.exit(1); });"
+```
+
+2. Do not use `page.addScriptTag({ path })` for Cursor workbench injection. Cursor may enforce Trusted Types and reject script tag text assignment.
+
+3. After direct runtime injection, run:
+
+```powershell
+npm run visual:capture
+```
+
+4. Treat direct injection as supporting evidence only. For final verification, run `npm run package`, install the VSIX, and restart Cursor when the loader or patching behavior changed.
+
+5. Check the active window really has the runtime API before trusting visual results:
+
+```powershell
+node -e "const { chromium } = require('playwright'); (async () => { const browser = await chromium.connectOverCDP('http://localhost:9222'); for (const context of browser.contexts()) { for (const page of context.pages()) { if (!page.url().includes('workbench.html')) continue; const state = await page.evaluate(() => ({ title: document.title, hasScan: typeof window.__cursorRtlScanAll === 'function', injectedStyles: Array.from(document.querySelectorAll('style')).some(s => (s.textContent || '').includes('.markdown-table-container')) })); console.log(JSON.stringify(state)); } } await browser.close(); })().catch(e => { console.error(e); process.exit(1); });"
+```
+
+6. If `visual:capture` says `RTL script detected: no`, or `hasScan` is false, the active workbench page did not receive `rtl.js`. Do not debug CSS or direction logic until injection is confirmed.
+
+7. If editing `resources/cursor-rtl-loader.cjs`, remember that the loader runs in Electron main. `Developer: Reload Window` is not enough to reload loader changes; use a full Cursor restart for end-to-end loader verification.
+
+8. A known loader failure mode is injecting too early while `webContents.getURL()` is still empty, marking the webContents as injected, then skipping the later `workbench.html` load. The loader should inject only into URLs containing `workbench.html` and should mark success after `executeJavaScript` resolves.
 
 ## Visual Reproduction Prompts
 

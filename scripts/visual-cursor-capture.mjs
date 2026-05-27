@@ -28,7 +28,12 @@ async function getWorkbenchPage(context) {
     })),
   );
 
+  const titleMatch =
+    targetTitle && targetTitle !== 'Cursor'
+      ? candidates.find((candidate) => candidate.title.includes(targetTitle))?.page
+      : undefined;
   const page =
+    titleMatch ??
     candidates.find((candidate) => candidate.url.includes('workbench.html'))?.page ??
     candidates.find((candidate) => candidate.title.includes(targetTitle))?.page ??
     candidates.find((candidate) => candidate.url.includes('vscode-file://'))?.page;
