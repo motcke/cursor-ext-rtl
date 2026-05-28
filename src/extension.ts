@@ -25,9 +25,6 @@ type UpdateCheckMode = 'startup' | 'periodic' | 'manual';
 
 const STARTUP_UPDATE_CHECK_DELAY_MS = 5_000;
 const MS_PER_HOUR = 60 * 60 * 1000;
-const LAST_NOTIFIED_VERSION_KEY = 'cursorRtl.lastNotifiedExtensionVersion';
-const REMIND_LATER_VERSION_KEY = 'cursorRtl.updateRemindLaterVersion';
-const REMIND_LATER_UNTIL_KEY = 'cursorRtl.updateRemindLaterUntil';
 
 function getPatchState(mainJsPath: string): PatchState {
     if (!fs.existsSync(mainJsPath)) {
@@ -275,60 +272,67 @@ function getNumberSetting(name: string, defaultValue: number, minValue: number):
 function getUpdateCheckConfig(): {
     enabled: boolean;
     intervalMs: number;
-    remindLaterMs: number;
 } {
     const config = vscode.workspace.getConfiguration('cursorRtl');
     return {
         enabled: config.get<boolean>('checkForExtensionUpdates', true),
         intervalMs: getNumberSetting('updateCheckIntervalHours', 6, 1) * MS_PER_HOUR,
-        remindLaterMs: getNumberSetting('updateRemindLaterHours', 24, 1) * MS_PER_HOUR,
     };
 }
 
+async function waitForWindowFocus(): Promise<void> {
+    if (vscode.window.state.focused) {
+        return;
+    }
+
+    await new Promise<void>((resolve) => {
+        const disposable = vscode.window.onDidChangeWindowState((state) => {
+            if (state.focused) {
+                disposable.dispose();
+                resolve();
+            }
+        });
+    });
+}
+
 async function showExtensionUpdateNotification(
-    context: vscode.ExtensionContext,
     result: Extract<UpdateCheckResult, { status: 'updateAvailable' }>,
-    mode: UpdateCheckMode,
-    remindLaterMs: number
+    mode: UpdateCheckMode
 ): Promise<void> {
     if (mode !== 'manual') {
-        const lastNotifiedVersion = context.globalState.get<string>(LAST_NOTIFIED_VERSION_KEY);
-        const remindLaterVersion = context.globalState.get<string>(REMIND_LATER_VERSION_KEY);
-        const remindLaterUntil = context.globalState.get<number>(REMIND_LATER_UNTIL_KEY, 0);
-        const canRemindAgain =
-            remindLaterVersion === result.remoteVersion && Date.now() >= remindLaterUntil;
-
-        if (lastNotifiedVersion === result.remoteVersion && !canRemindAgain) {
-            return;
-        }
-
-        await context.globalState.update(LAST_NOTIFIED_VERSION_KEY, result.remoteVersion);
+        await waitForWindowFocus();
     }
 
     action('version_available', { mode, version: result.remoteVersion });
 
-    const actions = ['Open Release Page'];
+    const openReleasePage: vscode.MessageItem = { title: 'Open Release Page' };
+    const downloadVsix: vscode.MessageItem = { title: 'Download VSIX' };
+    const remindLater: vscode.MessageItem = {
+        title: 'Remind me later',
+        isCloseAffordance: true,
+    };
+    const actions: vscode.MessageItem[] = [openReleasePage];
     if (result.vsixDownloadUrl) {
-        actions.push('Download VSIX');
+        actions.push(downloadVsix);
     }
-    actions.push('Remind Later');
+    actions.push(remindLater);
 
     const message =
         `Cursor RTL: A new version is available (${result.remoteVersion}). Update now?`;
-    const choice = await vscode.window.showInformationMessage(message, ...actions);
+    const choice = await vscode.window.showInformationMessage(
+        message,
+        { modal: true },
+        ...actions
+    );
 
-    if (choice === 'Open Release Page') {
+    if (choice === openReleasePage) {
         action('update_action_release_page', { mode, version: result.remoteVersion });
-        await context.globalState.update(REMIND_LATER_UNTIL_KEY, undefined);
         await vscode.env.openExternal(vscode.Uri.parse(result.releaseUrl));
-    } else if (choice === 'Download VSIX' && result.vsixDownloadUrl) {
+    } else if (choice === downloadVsix && result.vsixDownloadUrl) {
         action('update_action_download_vsix', { mode, version: result.remoteVersion });
-        await context.globalState.update(REMIND_LATER_UNTIL_KEY, undefined);
         await vscode.env.openExternal(vscode.Uri.parse(result.vsixDownloadUrl));
-    } else if (choice === 'Remind Later') {
+    } else if (choice === remindLater) {
         action('update_action_remind_later', { mode, version: result.remoteVersion });
-        await context.globalState.update(REMIND_LATER_VERSION_KEY, result.remoteVersion);
-        await context.globalState.update(REMIND_LATER_UNTIL_KEY, Date.now() + remindLaterMs);
     }
 }
 
@@ -362,7 +366,7 @@ async function runExtensionUpdateCheck(
         return;
     }
 
-    await showExtensionUpdateNotification(context, result, mode, config.remindLaterMs);
+    await showExtensionUpdateNotification(result, mode);
 }
 
 function clearScheduledUpdateChecks(): void {
@@ -370,6 +374,7 @@ function clearScheduledUpdateChecks(): void {
         clearTimeout(startupUpdateCheckTimeout);
         startupUpdateCheckTimeout = undefined;
     }
+
     if (updateCheckInterval) {
         clearInterval(updateCheckInterval);
         updateCheckInterval = undefined;
@@ -544,8 +549,7 @@ export function activate(context: vscode.ExtensionContext): void {
         }
         if (
             e.affectsConfiguration('cursorRtl.checkForExtensionUpdates') ||
-            e.affectsConfiguration('cursorRtl.updateCheckIntervalHours') ||
-            e.affectsConfiguration('cursorRtl.updateRemindLaterHours')
+            e.affectsConfiguration('cursorRtl.updateCheckIntervalHours')
         ) {
             scheduleExtensionUpdateChecks(context);
         }
