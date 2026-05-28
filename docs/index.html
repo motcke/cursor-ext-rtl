@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Cursor RTL - Smart Multi-Language RTL Support</title>
-<meta name="description" content="Smart multi-language RTL support for Cursor AI Chat. Auto-detects text direction per element - Hebrew, Arabic and Persian text is right-aligned while English stays left-aligned.">
+<meta name="description" content="Smart multi-language RTL support for Cursor AI Chat, Agents Window and Plan files. Weighted direction detection keeps Hebrew, Arabic and Persian right-aligned while English-heavy content stays left-aligned.">
 <meta name="theme-color" content="#0a0a1a">
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>↗</text></svg>">
 <style>
@@ -357,7 +357,7 @@ a:hover { opacity: 0.8 }
     <div class="fade-in">
       <span class="hero-badge" data-i18n="badge">תוסף קוד פתוח</span>
       <h1><span class="gradient-text" data-i18n="title">Cursor RTL</span></h1>
-      <p class="hero-sub" data-i18n="tagline">תמיכת RTL רב-לשונית חכמה ל-Cursor AI Chat. אלגוריתם ייעודי מזהה אוטומטית את כיוון הטקסט לכל אלמנט — טקסט בעברית מיושר לימין, אנגלית נשארת לשמאל.</p>
+      <p class="hero-sub" data-i18n="tagline">תמיכת RTL רב-לשונית חכמה ל-Cursor AI Chat, חלון Agents וקבצי Plan. אלגוריתם ייעודי מזהה את כיוון הטקסט לכל אלמנט ומשאיר תוכן אנגלי מיושר לשמאל.</p>
       <div class="hero-buttons">
         <a href="https://github.com/motcke/cursor-ext-rtl/releases" class="btn btn-primary" data-i18n="download">⬇ הורדת VSIX</a>
         <a href="https://github.com/motcke/cursor-ext-rtl" class="btn btn-secondary" data-i18n="github">★ צפייה ב-GitHub</a>
@@ -382,12 +382,37 @@ a:hover { opacity: 0.8 }
       <div class="feature-card fade-in">
         <div class="feature-icon">🔤</div>
         <h3 data-i18n="f2Title">זיהוי אוטומטי חכם</h3>
-        <p data-i18n="f2Desc">כל פסקה מנותחת בנפרד. טקסט בעברית, ערבית ופרסית מיושר לימין, אנגלית נשארת לשמאל. שיחות מעורבות פשוט עובדות.</p>
+        <p data-i18n="f2Desc">כל אלמנט מנותח בנפרד עם ניקוד RTL/LTR משוקלל, כך שטקסט עברי, ערבי ופרסי מיושר לימין ותוכן אנגלי נשאר לשמאל.</p>
       </div>
       <div class="feature-card fade-in">
         <div class="feature-icon">🔄</div>
         <h3 data-i18n="f3Title">שורד עדכונים</h3>
         <p data-i18n="f3Desc">מזהה כשעדכוני Cursor דורסים את התיקון ומציע להחיל מחדש אוטומטית. ההגדרות שלך נשארות.</p>
+      </div>
+      <div class="feature-card fade-in">
+        <div class="feature-icon">📝</div>
+        <h3 data-i18n="f4Title">תמיכה בקבצי Plan</h3>
+        <p data-i18n-html="f4Desc">תומך בעורך ה-rich text של קבצי <code>.plan.md</code>, כולל כללי CSS ממוקדים לתוכן ש-Cursor מייצר מחדש.</p>
+      </div>
+      <div class="feature-card fade-in">
+        <div class="feature-icon">🤖</div>
+        <h3 data-i18n="f5Title">חלון Agents</h3>
+        <p data-i18n="f5Desc">מרחיב את RTL לחלון Agents, כולל שיחת הסוכן ותצוגת ה-Plan הצדדית.</p>
+      </div>
+      <div class="feature-card fade-in">
+        <div class="feature-icon">▦</div>
+        <h3 data-i18n="f6Title">טבלאות Markdown</h3>
+        <p data-i18n="f6Desc">מטפל בטבלאות Markdown מעורבות לפי כיוון רוב התאים, כולל בתוך קבצי Plan.</p>
+      </div>
+      <div class="feature-card fade-in">
+        <div class="feature-icon">⌘</div>
+        <h3 data-i18n="f7Title">מזהה קוד ומונחים טכניים</h3>
+        <p data-i18n="f7Desc">נתיבים, שמות API ומזהים באנגלית מקבלים משקל נמוך יותר, כדי שטקסט RTL עם קוד לא יתהפך בטעות.</p>
+      </div>
+      <div class="feature-card fade-in">
+        <div class="feature-icon">🛡</div>
+        <h3 data-i18n="f8Title">החלה בטוחה</h3>
+        <p data-i18n="f8Desc">הטעינה מתבצעת רק בחלונות workbench, עם גיבוי, rollback ופעולות idempotent.</p>
       </div>
     </div>
   </div>
@@ -500,7 +525,7 @@ const i18n = {
   en: {
     badge: "Open Source Extension",
     title: "Cursor RTL",
-    tagline: "Smart multi-language RTL support for Cursor AI Chat. A purpose-built algorithm auto-detects text direction per element \u2014 RTL text is right-aligned, English stays left-aligned.",
+    tagline: "Smart multi-language RTL support for Cursor AI Chat, Agents Window, and Plan files. A purpose-built algorithm detects text direction per element and keeps English-heavy content left-aligned.",
     download: "\u2B07 Download VSIX",
     github: "\u2605 View on GitHub",
     featuresLabel: "Features",
@@ -508,9 +533,19 @@ const i18n = {
     f1Title: "One-Click Install",
     f1Desc: "Enable or disable RTL support from the Command Palette with a single command. No manual file editing needed.",
     f2Title: "Smart Auto-Detection",
-    f2Desc: "Each paragraph is analyzed individually. Hebrew, Arabic, and Persian text is right-aligned while English stays left-aligned. Mixed conversations just work.",
+    f2Desc: "Each element is analyzed with weighted RTL/LTR scoring, so Hebrew, Arabic, and Persian content is right-aligned while English-heavy content stays left-aligned.",
     f3Title: "Survives Updates",
     f3Desc: "Detects when Cursor updates overwrite the patch and offers to re-apply automatically. Your RTL setup stays intact.",
+    f4Title: "Plan File Support",
+    f4Desc: "Supports Cursor's rich-text editor for <code>.plan.md</code> files, including scoped CSS rules for DOM that Cursor rewrites.",
+    f5Title: "Agents Window",
+    f5Desc: "Extends RTL handling to the Agents Window, including the agent conversation and side Plan view.",
+    f6Title: "Markdown Tables",
+    f6Desc: "Handles mixed RTL/LTR Markdown tables by the majority direction of their cells, including inside Plan files.",
+    f7Title: "Code-Aware Detection",
+    f7Desc: "Paths, API names, and English identifiers get lower weight, so RTL text with code-like tokens is less likely to flip incorrectly.",
+    f8Title: "Safe Runtime Injection",
+    f8Desc: "Injects only into workbench windows, with backups, rollback, and idempotent patch operations.",
     installLabel: "Get Started",
     installTitle: "Install in 4 steps",
     s1Title: "Download",
@@ -533,7 +568,7 @@ const i18n = {
   he: {
     badge: "\u05EA\u05D5\u05E1\u05E3 \u05E7\u05D5\u05D3 \u05E4\u05EA\u05D5\u05D7",
     title: "Cursor RTL",
-    tagline: "\u05EA\u05DE\u05D9\u05DB\u05EA RTL \u05E8\u05D1-\u05DC\u05E9\u05D5\u05E0\u05D9\u05EA \u05D7\u05DB\u05DE\u05D4 \u05DC-Cursor AI Chat. \u05D0\u05DC\u05D2\u05D5\u05E8\u05D9\u05EA\u05DD \u05D9\u05D9\u05E2\u05D5\u05D3\u05D9 \u05DE\u05D6\u05D4\u05D4 \u05D0\u05D5\u05D8\u05D5\u05DE\u05D8\u05D9\u05EA \u05D0\u05EA \u05DB\u05D9\u05D5\u05D5\u05DF \u05D4\u05D8\u05E7\u05E1\u05D8 \u05DC\u05DB\u05DC \u05D0\u05DC\u05DE\u05E0\u05D8 \u2014 \u05D8\u05E7\u05E1\u05D8 \u05D1\u05E2\u05D1\u05E8\u05D9\u05EA \u05DE\u05D9\u05D5\u05E9\u05E8 \u05DC\u05D9\u05DE\u05D9\u05DF, \u05D0\u05E0\u05D2\u05DC\u05D9\u05EA \u05E0\u05E9\u05D0\u05E8\u05EA \u05DC\u05E9\u05DE\u05D0\u05DC.",
+    tagline: "\u05EA\u05DE\u05D9\u05DB\u05EA RTL \u05E8\u05D1-\u05DC\u05E9\u05D5\u05E0\u05D9\u05EA \u05D7\u05DB\u05DE\u05D4 \u05DC-Cursor AI Chat, \u05D7\u05DC\u05D5\u05DF Agents \u05D5\u05E7\u05D1\u05E6\u05D9 Plan. \u05D0\u05DC\u05D2\u05D5\u05E8\u05D9\u05EA\u05DD \u05D9\u05D9\u05E2\u05D5\u05D3\u05D9 \u05DE\u05D6\u05D4\u05D4 \u05D0\u05EA \u05DB\u05D9\u05D5\u05D5\u05DF \u05D4\u05D8\u05E7\u05E1\u05D8 \u05DC\u05DB\u05DC \u05D0\u05DC\u05DE\u05E0\u05D8 \u05D5\u05DE\u05E9\u05D0\u05D9\u05E8 \u05EA\u05D5\u05DB\u05DF \u05D0\u05E0\u05D2\u05DC\u05D9 \u05DE\u05D9\u05D5\u05E9\u05E8 \u05DC\u05E9\u05DE\u05D0\u05DC.",
     download: "\u2B07 \u05D4\u05D5\u05E8\u05D3\u05EA VSIX",
     github: "\u2605 \u05E6\u05E4\u05D9\u05D9\u05D4 \u05D1-GitHub",
     featuresLabel: "\u05EA\u05DB\u05D5\u05E0\u05D5\u05EA",
@@ -541,9 +576,19 @@ const i18n = {
     f1Title: "\u05D4\u05EA\u05E7\u05E0\u05D4 \u05D1\u05DC\u05D7\u05D9\u05E6\u05D4 \u05D0\u05D7\u05EA",
     f1Desc: "\u05D4\u05E4\u05E2\u05DC\u05D4 \u05D0\u05D5 \u05DB\u05D9\u05D1\u05D5\u05D9 \u05EA\u05DE\u05D9\u05DB\u05EA RTL \u05DE\u05DC\u05D5\u05D7 \u05D4\u05E4\u05E7\u05D5\u05D3\u05D5\u05EA \u05D1\u05E4\u05E7\u05D5\u05D3\u05D4 \u05D0\u05D7\u05EA. \u05DC\u05DC\u05D0 \u05E2\u05E8\u05D9\u05DB\u05D4 \u05D9\u05D3\u05E0\u05D9\u05EA \u05E9\u05DC \u05E7\u05D1\u05E6\u05D9\u05DD.",
     f2Title: "\u05D6\u05D9\u05D4\u05D5\u05D9 \u05D0\u05D5\u05D8\u05D5\u05DE\u05D8\u05D9 \u05D7\u05DB\u05DD",
-    f2Desc: "\u05DB\u05DC \u05E4\u05E1\u05E7\u05D4 \u05DE\u05E0\u05D5\u05EA\u05D7\u05EA \u05D1\u05E0\u05E4\u05E8\u05D3. \u05D8\u05E7\u05E1\u05D8 \u05D1\u05E2\u05D1\u05E8\u05D9\u05EA, \u05E2\u05E8\u05D1\u05D9\u05EA \u05D5\u05E4\u05E8\u05E1\u05D9\u05EA \u05DE\u05D9\u05D5\u05E9\u05E8 \u05DC\u05D9\u05DE\u05D9\u05DF, \u05D0\u05E0\u05D2\u05DC\u05D9\u05EA \u05E0\u05E9\u05D0\u05E8\u05EA \u05DC\u05E9\u05DE\u05D0\u05DC. \u05E9\u05D9\u05D7\u05D5\u05EA \u05DE\u05E2\u05D5\u05E8\u05D1\u05D5\u05EA \u05E4\u05E9\u05D5\u05D8 \u05E2\u05D5\u05D1\u05D3\u05D5\u05EA.",
+    f2Desc: "\u05DB\u05DC \u05D0\u05DC\u05DE\u05E0\u05D8 \u05DE\u05E0\u05D5\u05EA\u05D7 \u05D1\u05E0\u05E4\u05E8\u05D3 \u05E2\u05DD \u05E0\u05D9\u05E7\u05D5\u05D3 RTL/LTR \u05DE\u05E9\u05D5\u05E7\u05DC\u05DC, \u05DB\u05DA \u05E9\u05D8\u05E7\u05E1\u05D8 \u05E2\u05D1\u05E8\u05D9, \u05E2\u05E8\u05D1\u05D9 \u05D5\u05E4\u05E8\u05E1\u05D9 \u05DE\u05D9\u05D5\u05E9\u05E8 \u05DC\u05D9\u05DE\u05D9\u05DF \u05D5\u05EA\u05D5\u05DB\u05DF \u05D0\u05E0\u05D2\u05DC\u05D9 \u05E0\u05E9\u05D0\u05E8 \u05DC\u05E9\u05DE\u05D0\u05DC.",
     f3Title: "\u05E9\u05D5\u05E8\u05D3 \u05E2\u05D3\u05DB\u05D5\u05E0\u05D9\u05DD",
     f3Desc: "\u05DE\u05D6\u05D4\u05D4 \u05DB\u05E9\u05E2\u05D3\u05DB\u05D5\u05E0\u05D9 Cursor \u05D3\u05D5\u05E8\u05E1\u05D9\u05DD \u05D0\u05EA \u05D4\u05EA\u05D9\u05E7\u05D5\u05DF \u05D5\u05DE\u05E6\u05D9\u05E2 \u05DC\u05D4\u05D7\u05D9\u05DC \u05DE\u05D7\u05D3\u05E9 \u05D0\u05D5\u05D8\u05D5\u05DE\u05D8\u05D9\u05EA. \u05D4\u05D4\u05D2\u05D3\u05E8\u05D5\u05EA \u05E9\u05DC\u05DA \u05E0\u05E9\u05D0\u05E8\u05D5\u05EA.",
+    f4Title: "\u05EA\u05DE\u05D9\u05DB\u05D4 \u05D1\u05E7\u05D1\u05E6\u05D9 Plan",
+    f4Desc: "\u05EA\u05D5\u05DE\u05DA \u05D1\u05E2\u05D5\u05E8\u05DA \u05D4-rich text \u05E9\u05DC \u05E7\u05D1\u05E6\u05D9 <code>.plan.md</code>, \u05DB\u05D5\u05DC\u05DC \u05DB\u05DC\u05DC\u05D9 CSS \u05DE\u05DE\u05D5\u05E7\u05D3\u05D9\u05DD \u05DC\u05EA\u05D5\u05DB\u05DF \u05E9-Cursor \u05DE\u05D9\u05D9\u05E6\u05E8 \u05DE\u05D7\u05D3\u05E9.",
+    f5Title: "\u05D7\u05DC\u05D5\u05DF Agents",
+    f5Desc: "\u05DE\u05E8\u05D7\u05D9\u05D1 \u05D0\u05EA RTL \u05DC\u05D7\u05DC\u05D5\u05DF Agents, \u05DB\u05D5\u05DC\u05DC \u05E9\u05D9\u05D7\u05EA \u05D4\u05E1\u05D5\u05DB\u05DF \u05D5\u05EA\u05E6\u05D5\u05D2\u05EA \u05D4-Plan \u05D4\u05E6\u05D3\u05D3\u05D9\u05EA.",
+    f6Title: "\u05D8\u05D1\u05DC\u05D0\u05D5\u05EA Markdown",
+    f6Desc: "\u05DE\u05D8\u05E4\u05DC \u05D1\u05D8\u05D1\u05DC\u05D0\u05D5\u05EA Markdown \u05DE\u05E2\u05D5\u05E8\u05D1\u05D5\u05EA \u05DC\u05E4\u05D9 \u05DB\u05D9\u05D5\u05D5\u05DF \u05E8\u05D5\u05D1 \u05D4\u05EA\u05D0\u05D9\u05DD, \u05DB\u05D5\u05DC\u05DC \u05D1\u05EA\u05D5\u05DA \u05E7\u05D1\u05E6\u05D9 Plan.",
+    f7Title: "\u05D6\u05D9\u05D4\u05D5\u05D9 \u05DE\u05D5\u05D3\u05E2 \u05DC\u05E7\u05D5\u05D3",
+    f7Desc: "\u05E0\u05EA\u05D9\u05D1\u05D9\u05DD, \u05E9\u05DE\u05D5\u05EA API \u05D5\u05DE\u05D6\u05D4\u05D9\u05DD \u05D1\u05D0\u05E0\u05D2\u05DC\u05D9\u05EA \u05DE\u05E7\u05D1\u05DC\u05D9\u05DD \u05DE\u05E9\u05E7\u05DC \u05E0\u05DE\u05D5\u05DA \u05D9\u05D5\u05EA\u05E8, \u05DB\u05D3\u05D9 \u05E9\u05D8\u05E7\u05E1\u05D8 RTL \u05E2\u05DD \u05E7\u05D5\u05D3 \u05DC\u05D0 \u05D9\u05EA\u05D4\u05E4\u05DA \u05D1\u05D8\u05E2\u05D5\u05EA.",
+    f8Title: "\u05D4\u05D7\u05DC\u05D4 \u05D1\u05D8\u05D5\u05D7\u05D4",
+    f8Desc: "\u05D4\u05D8\u05E2\u05D9\u05E0\u05D4 \u05DE\u05EA\u05D1\u05E6\u05E2\u05EA \u05E8\u05E7 \u05D1\u05D7\u05DC\u05D5\u05E0\u05D5\u05EA workbench, \u05E2\u05DD \u05D2\u05D9\u05D1\u05D5\u05D9, rollback \u05D5\u05E4\u05E2\u05D5\u05DC\u05D5\u05EA idempotent.",
     installLabel: "\u05D4\u05EA\u05D7\u05DC\u05D4",
     installTitle: "\u05D4\u05EA\u05E7\u05E0\u05D4 \u05D1-4 \u05E6\u05E2\u05D3\u05D9\u05DD",
     s1Title: "\u05D4\u05D5\u05E8\u05D3\u05D4",
@@ -566,7 +611,7 @@ const i18n = {
   ar: {
     badge: "\u0625\u0636\u0627\u0641\u0629 \u0645\u0641\u062A\u0648\u062D\u0629 \u0627\u0644\u0645\u0635\u062F\u0631",
     title: "Cursor RTL",
-    tagline: "\u062F\u0639\u0645 RTL \u0630\u0643\u064A \u0645\u062A\u0639\u062F\u062F \u0627\u0644\u0644\u063A\u0627\u062A \u0644\u0640 Cursor AI Chat. \u062E\u0648\u0627\u0631\u0632\u0645\u064A\u0629 \u0645\u0635\u0645\u0645\u0629 \u062E\u0635\u064A\u0635\u0627\u064B \u062A\u0643\u062A\u0634\u0641 \u0627\u062A\u062C\u0627\u0647 \u0627\u0644\u0646\u0635 \u062A\u0644\u0642\u0627\u0626\u064A\u0627\u064B \u0644\u0643\u0644 \u0639\u0646\u0635\u0631 \u2014 \u0627\u0644\u0646\u0635 \u0627\u0644\u0639\u0631\u0628\u064A \u064A\u064F\u0645\u062D\u0627\u0630\u0649 \u0644\u0644\u064A\u0645\u064A\u0646\u060C \u0648\u0627\u0644\u0625\u0646\u062C\u0644\u064A\u0632\u064A \u064A\u0628\u0642\u0649 \u0644\u0644\u064A\u0633\u0627\u0631.",
+    tagline: "دعم RTL ذكي متعدد اللغات لـ Cursor AI Chat ونافذة Agents وملفات Plan. خوارزمية مخصصة تكتشف اتجاه النص لكل عنصر وتحافظ على المحتوى الإنجليزي بمحاذاة اليسار.",
     download: "\u2B07 \u062A\u062D\u0645\u064A\u0644 VSIX",
     github: "\u2605 \u0639\u0631\u0636 \u0639\u0644\u0649 GitHub",
     featuresLabel: "\u0627\u0644\u0645\u064A\u0632\u0627\u062A",
@@ -574,9 +619,19 @@ const i18n = {
     f1Title: "\u062A\u062B\u0628\u064A\u062A \u0628\u0646\u0642\u0631\u0629 \u0648\u0627\u062D\u062F\u0629",
     f1Desc: "\u062A\u0641\u0639\u064A\u0644 \u0623\u0648 \u062A\u0639\u0637\u064A\u0644 \u062F\u0639\u0645 RTL \u0645\u0646 \u0644\u0648\u062D\u0629 \u0627\u0644\u0623\u0648\u0627\u0645\u0631 \u0628\u0623\u0645\u0631 \u0648\u0627\u062D\u062F. \u0644\u0627 \u062D\u0627\u062C\u0629 \u0644\u062A\u062D\u0631\u064A\u0631 \u0627\u0644\u0645\u0644\u0641\u0627\u062A \u064A\u062F\u0648\u064A\u0627\u064B.",
     f2Title: "\u0627\u0643\u062A\u0634\u0627\u0641 \u062A\u0644\u0642\u0627\u0626\u064A \u0630\u0643\u064A",
-    f2Desc: "\u064A\u062A\u0645 \u062A\u062D\u0644\u064A\u0644 \u0643\u0644 \u0641\u0642\u0631\u0629 \u0628\u0634\u0643\u0644 \u0645\u0633\u062A\u0642\u0644. \u0627\u0644\u0646\u0635 \u0627\u0644\u0639\u0631\u0628\u064A \u0648\u0627\u0644\u0639\u0628\u0631\u064A \u0648\u0627\u0644\u0641\u0627\u0631\u0633\u064A \u064A\u064F\u0645\u062D\u0627\u0630\u0649 \u0644\u0644\u064A\u0645\u064A\u0646\u060C \u0648\u0627\u0644\u0625\u0646\u062C\u0644\u064A\u0632\u064A \u064A\u0628\u0642\u0649 \u0644\u0644\u064A\u0633\u0627\u0631. \u0627\u0644\u0645\u062D\u0627\u062F\u062B\u0627\u062A \u0627\u0644\u0645\u062E\u062A\u0644\u0637\u0629 \u062A\u0639\u0645\u0644 \u0628\u0633\u0644\u0627\u0633\u0629.",
+    f2Desc: "يتم تحليل كل عنصر باستخدام تسجيل موزون لاتجاه RTL/LTR، فيبقى المحتوى العربي والعبري والفارسي بمحاذاة اليمين والمحتوى الإنجليزي بمحاذاة اليسار.",
     f3Title: "\u064A\u0646\u062C\u0648 \u0645\u0646 \u0627\u0644\u062A\u062D\u062F\u064A\u062B\u0627\u062A",
     f3Desc: "\u064A\u0643\u062A\u0634\u0641 \u0639\u0646\u062F\u0645\u0627 \u062A\u062D\u062F\u064A\u062B\u0627\u062A Cursor \u062A\u0643\u062A\u0628 \u0641\u0648\u0642 \u0627\u0644\u062A\u0635\u062D\u064A\u062D \u0648\u064A\u0639\u0631\u0636 \u0625\u0639\u0627\u062F\u0629 \u0627\u0644\u062A\u0637\u0628\u064A\u0642 \u062A\u0644\u0642\u0627\u0626\u064A\u0627\u064B. \u0625\u0639\u062F\u0627\u062F\u0627\u062A RTL \u062A\u0628\u0642\u0649 \u0633\u0644\u064A\u0645\u0629.",
+    f4Title: "دعم ملفات Plan",
+    f4Desc: "يدعم محرر النص الغني لملفات <code>.plan.md</code>، بما في ذلك قواعد CSS محددة للمحتوى الذي يعيد Cursor كتابته.",
+    f5Title: "نافذة Agents",
+    f5Desc: "يوسع معالجة RTL إلى نافذة Agents، بما في ذلك محادثة الوكيل وعرض Plan الجانبي.",
+    f6Title: "جداول Markdown",
+    f6Desc: "يعالج جداول Markdown المختلطة حسب اتجاه غالبية الخلايا، بما في ذلك داخل ملفات Plan.",
+    f7Title: "اكتشاف واع للكود",
+    f7Desc: "تحصل المسارات وأسماء API والمعرفات الإنجليزية على وزن أقل، حتى لا ينقلب نص RTL الذي يحتوي على رموز برمجية بالخطأ.",
+    f8Title: "حقن آمن وقت التشغيل",
+    f8Desc: "يتم الحقن فقط في نوافذ workbench، مع نسخ احتياطية واسترجاع وعمليات تصحيح idempotent.",
     installLabel: "\u0627\u0628\u062F\u0623",
     installTitle: "\u062A\u062B\u0628\u064A\u062A \u0641\u064A 4 \u062E\u0637\u0648\u0627\u062A",
     s1Title: "\u062A\u062D\u0645\u064A\u0644",
@@ -599,7 +654,7 @@ const i18n = {
   fa: {
     badge: "\u0627\u0641\u0632\u0648\u0646\u0647 \u0645\u062A\u0646\u200C\u0628\u0627\u0632",
     title: "Cursor RTL",
-    tagline: "\u067E\u0634\u062A\u06CC\u0628\u0627\u0646\u06CC RTL \u0647\u0648\u0634\u0645\u0646\u062F \u0686\u0646\u062F\u0632\u0628\u0627\u0646\u0647 \u0628\u0631\u0627\u06CC Cursor AI Chat. \u0627\u0644\u06AF\u0648\u0631\u06CC\u062A\u0645\u06CC \u0627\u062E\u062A\u0635\u0627\u0635\u06CC \u06A9\u0647 \u062C\u0647\u062A \u0645\u062A\u0646 \u0631\u0627 \u0628\u0631\u0627\u06CC \u0647\u0631 \u0639\u0646\u0635\u0631 \u0628\u0647\u200C\u0637\u0648\u0631 \u062E\u0648\u062F\u06A9\u0627\u0631 \u062A\u0634\u062E\u06CC\u0635 \u0645\u06CC\u200C\u062F\u0647\u062F \u2014 \u0645\u062A\u0646 \u0641\u0627\u0631\u0633\u06CC \u0628\u0647 \u0631\u0627\u0633\u062A \u0686\u06CC\u0646 \u0645\u06CC\u200C\u0634\u0648\u062F\u060C \u0627\u0646\u06AF\u0644\u06CC\u0633\u06CC \u0686\u067E\u200C\u0686\u06CC\u0646 \u0645\u06CC\u200C\u0645\u0627\u0646\u062F.",
+    tagline: "پشتیبانی RTL هوشمند چندزبانه برای Cursor AI Chat، پنجره Agents و فایل‌های Plan. الگوریتم اختصاصی جهت متن را برای هر عنصر تشخیص می‌دهد و محتوای انگلیسی را چپ‌چین نگه می‌دارد.",
     download: "\u2B07 \u062F\u0627\u0646\u0644\u0648\u062F VSIX",
     github: "\u2605 \u0645\u0634\u0627\u0647\u062F\u0647 \u062F\u0631 GitHub",
     featuresLabel: "\u0648\u06CC\u0698\u06AF\u06CC\u200C\u0647\u0627",
@@ -607,9 +662,19 @@ const i18n = {
     f1Title: "\u0646\u0635\u0628 \u0628\u0627 \u06CC\u06A9 \u06A9\u0644\u06CC\u06A9",
     f1Desc: "\u0641\u0639\u0627\u0644 \u06CC\u0627 \u063A\u06CC\u0631\u0641\u0639\u0627\u0644 \u06A9\u0631\u062F\u0646 \u067E\u0634\u062A\u06CC\u0628\u0627\u0646\u06CC RTL \u0627\u0632 \u067E\u0646\u0644 \u062F\u0633\u062A\u0648\u0631\u0627\u062A \u0628\u0627 \u06CC\u06A9 \u062F\u0633\u062A\u0648\u0631. \u0628\u062F\u0648\u0646 \u0646\u06CC\u0627\u0632 \u0628\u0647 \u0648\u06CC\u0631\u0627\u06CC\u0634 \u062F\u0633\u062A\u06CC \u0641\u0627\u06CC\u0644\u200C\u0647\u0627.",
     f2Title: "\u062A\u0634\u062E\u06CC\u0635 \u062E\u0648\u062F\u06A9\u0627\u0631 \u0647\u0648\u0634\u0645\u0646\u062F",
-    f2Desc: "\u0647\u0631 \u067E\u0627\u0631\u0627\u06AF\u0631\u0627\u0641 \u0628\u0647\u200C\u0635\u0648\u0631\u062A \u0645\u0633\u062A\u0642\u0644 \u062A\u062D\u0644\u06CC\u0644 \u0645\u06CC\u200C\u0634\u0648\u062F. \u0645\u062A\u0646 \u0641\u0627\u0631\u0633\u06CC\u060C \u0639\u0631\u0628\u06CC \u0648 \u0639\u0628\u0631\u06CC \u0628\u0647 \u0631\u0627\u0633\u062A \u0686\u06CC\u0646 \u0648 \u0627\u0646\u06AF\u0644\u06CC\u0633\u06CC \u0686\u067E\u200C\u0686\u06CC\u0646 \u0645\u06CC\u200C\u0645\u0627\u0646\u062F. \u0645\u06A9\u0627\u0644\u0645\u0627\u062A \u0686\u0646\u062F\u0632\u0628\u0627\u0646\u0647 \u0628\u06CC\u200C\u062F\u0631\u062F\u0633\u0631 \u06A9\u0627\u0631 \u0645\u06CC\u200C\u06A9\u0646\u0646\u062F.",
+    f2Desc: "هر عنصر با امتیازدهی وزن‌دار RTL/LTR تحلیل می‌شود تا محتوای فارسی، عربی و عبری راست‌چین و محتوای انگلیسی چپ‌چین بماند.",
     f3Title: "\u0645\u0642\u0627\u0648\u0645 \u062F\u0631 \u0628\u0631\u0627\u0628\u0631 \u0628\u0647\u200C\u0631\u0648\u0632\u0631\u0633\u0627\u0646\u06CC",
     f3Desc: "\u062A\u0634\u062E\u06CC\u0635 \u0645\u06CC\u200C\u062F\u0647\u062F \u0648\u0642\u062A\u06CC \u0628\u0647\u200C\u0631\u0648\u0632\u0631\u0633\u0627\u0646\u06CC Cursor \u067E\u0686 \u0631\u0627 \u0628\u0627\u0632\u0646\u0648\u06CC\u0633\u06CC \u0645\u06CC\u200C\u06A9\u0646\u062F \u0648 \u067E\u06CC\u0634\u0646\u0647\u0627\u062F \u0627\u0639\u0645\u0627\u0644 \u0645\u062C\u062F\u062F \u062E\u0648\u062F\u06A9\u0627\u0631 \u0645\u06CC\u200C\u062F\u0647\u062F. \u062A\u0646\u0638\u06CC\u0645\u0627\u062A RTL \u0634\u0645\u0627 \u062F\u0633\u062A\u200C\u0646\u062E\u0648\u0631\u062F\u0647 \u0645\u06CC\u200C\u0645\u0627\u0646\u062F.",
+    f4Title: "پشتیبانی از فایل‌های Plan",
+    f4Desc: "از ویرایشگر rich text فایل‌های <code>.plan.md</code> پشتیبانی می‌کند، از جمله قوانین CSS محدود برای محتوایی که Cursor بازنویسی می‌کند.",
+    f5Title: "پنجره Agents",
+    f5Desc: "پردازش RTL را به پنجره Agents گسترش می‌دهد، از جمله مکالمه عامل و نمای Plan کناری.",
+    f6Title: "جدول‌های Markdown",
+    f6Desc: "جدول‌های Markdown چندجهته را بر اساس جهت غالب سلول‌ها مدیریت می‌کند، از جمله داخل فایل‌های Plan.",
+    f7Title: "تشخیص آگاه از کد",
+    f7Desc: "مسیرها، نام‌های API و شناسه‌های انگلیسی وزن کمتری می‌گیرند تا متن RTL همراه با کد به اشتباه برنگردد.",
+    f8Title: "تزریق امن در زمان اجرا",
+    f8Desc: "فقط در پنجره‌های workbench تزریق می‌شود، همراه با نسخه پشتیبان، rollback و عملیات idempotent.",
     installLabel: "\u0634\u0631\u0648\u0639",
     installTitle: "\u0646\u0635\u0628 \u062F\u0631 4 \u0645\u0631\u062D\u0644\u0647",
     s1Title: "\u062F\u0627\u0646\u0644\u0648\u062F",
