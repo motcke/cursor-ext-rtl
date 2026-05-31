@@ -3,3 +3,9 @@ dist/
 *.vsix
 visual/actual/
 visual/diff/
+
+# Accidental Yarn PnP artifacts (project uses npm)
+.pnp.cjs
+.pnp.loader.mjs
+.yarn/
+yarn.lock

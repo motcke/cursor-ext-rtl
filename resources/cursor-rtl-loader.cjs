@@ -21,7 +21,7 @@
         console.warn(LOG_PREFIX, "FATAL: cannot write log to", LOG_FILE, initErr.message);
     }
 
-    log("pid=" + process.pid, "version=1.2.0");
+    log("pid=" + process.pid, "version=1.3.0");
 
     // --- require electron (this is the most likely failure point) ---
     var electron;
@@ -68,29 +68,94 @@
         return typeof url === "string" && url.indexOf("workbench.html") !== -1;
     }
 
+    function isRtlRuntimeAlive(wc) {
+        return wc.executeJavaScript('typeof window.__cursorRtlScanAll === "function"');
+    }
+
+    function runRtlScript(wc, label, currentUrl) {
+        var rtlPath = findRtlScript();
+        if (!rtlPath) {
+            log(label, "rtl.js NOT FOUND");
+            wc.__rtlInjecting = false;
+            return;
+        }
+        var script = fs.readFileSync(rtlPath, "utf-8");
+        log(label, "calling executeJavaScript, script length:", script.length);
+        wc.executeJavaScript(script)
+            .then(function() { return isRtlRuntimeAlive(wc); })
+            .then(function(alive) {
+                wc.__rtlInjecting = false;
+                if (alive) {
+                    wc.__rtlInjectedUrl = currentUrl;
+                    log(label, "executeJavaScript OK, runtime verified");
+                } else {
+                    wc.__rtlInjectedUrl = "";
+                    log(label, "executeJavaScript finished but runtime not verified");
+                }
+            })
+            .catch(function(err) {
+                wc.__rtlInjecting = false;
+                wc.__rtlInjectedUrl = "";
+                log(label, "executeJavaScript ERROR:", err && err.message);
+            });
+    }
+
     function injectIntoWebContents(wc, label) {
         if (!wc || wc.isDestroyed()) { log(label, "wc destroyed, skip"); return; }
+        if (wc.__rtlInjecting) { log(label, "injection in flight, skip"); return; }
         var currentUrl = "";
         try { currentUrl = wc.getURL ? wc.getURL() : ""; } catch(e) { currentUrl = ""; }
-        if (!isWorkbenchUrl(currentUrl)) { log(label, "not workbench yet, skip url=" + currentUrl); return; }
-        if (wc.__rtlInjectedUrl === currentUrl) { log(label, "already injected for url, skip"); return; }
-        try {
-            var rtlPath = findRtlScript();
-            if (!rtlPath) { log(label, "rtl.js NOT FOUND"); return; }
-            var script = fs.readFileSync(rtlPath, "utf-8");
-            log(label, "calling executeJavaScript, script length:", script.length);
-            wc.executeJavaScript(script)
-                .then(function() {
-                    wc.__rtlInjectedUrl = currentUrl;
-                    log(label, "executeJavaScript OK");
-                })
-                .catch(function(err) {
+        if (!isWorkbenchUrl(currentUrl)) {
+            log(label, "not workbench yet, skip url=" + currentUrl);
+            return;
+        }
+        if (wc.__rtlInjectedUrl === currentUrl) {
+            isRtlRuntimeAlive(wc)
+                .then(function(alive) {
+                    if (alive) {
+                        log(label, "runtime already active for url, skip");
+                        return;
+                    }
+                    log(label, "injection flag set but runtime missing, re-injecting");
                     wc.__rtlInjectedUrl = "";
-                    log(label, "executeJavaScript ERROR:", err && err.message);
+                    injectIntoWebContents(wc, label + "-revive");
+                })
+                .catch(function() {
+                    wc.__rtlInjectedUrl = "";
+                    injectIntoWebContents(wc, label + "-revive");
                 });
+            return;
+        }
+        wc.__rtlInjecting = true;
+        try {
+            runRtlScript(wc, label, currentUrl);
         } catch (e) {
+            wc.__rtlInjecting = false;
             wc.__rtlInjectedUrl = "";
             log(label, "inject error:", e.message);
+        }
+    }
+
+    function scheduleInjectFallback(wc, winId) {
+        var delays = [250, 1000];
+        for (var i = 0; i < delays.length; i++) {
+            (function(delay) {
+                setTimeout(function() {
+                    if (!wc || wc.isDestroyed()) return;
+                    var url = "";
+                    try { url = wc.getURL ? wc.getURL() : ""; } catch(e) { url = ""; }
+                    if (!isWorkbenchUrl(url)) return;
+                    isRtlRuntimeAlive(wc)
+                        .then(function(alive) {
+                            if (!alive) {
+                                injectIntoWebContents(wc, "inject-fallback[" + winId + "@" + delay + "ms]");
+                            }
+                        })
+                        .catch(function() {
+                            injectIntoWebContents(wc, "inject-fallback[" + winId + "@" + delay + "ms]");
+                        });
+                }, delay);
+            })(delays[i]);
         }
     }
 
@@ -101,12 +166,17 @@
         var url = "";
         try { url = wc.getURL ? wc.getURL() : "?"; } catch(e) { url = "err"; }
         log(label, "id=" + winId, "url=" + url, "loading=" + wc.isLoading());
+        wc.on("did-start-loading", function() {
+            wc.__rtlInjectedUrl = "";
+            log("did-start-loading win=" + winId, "cleared injection flag");
+        });
         wc.on("did-finish-load", function() {
             var u = "";
             try { u = wc.getURL ? wc.getURL() : "?"; } catch(e) { u = "err"; }
             log("did-finish-load win=" + winId, "url=" + u);
             injectIntoWebContents(wc, "inject[" + winId + "]");
         });
+        scheduleInjectFallback(wc, winId);
         if (!wc.isLoading() && !wc.isDestroyed()) {
             injectIntoWebContents(wc, "inject-now[" + winId + "]");
         }
