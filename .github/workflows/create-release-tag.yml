@@ -14,22 +14,8 @@ jobs:
         uses: actions/checkout@v4
         with:
           fetch-tags: true
-
-      - name: Read version from package.json
-        id: version
-        run: |
-          VERSION=$(node -p "require('./package.json').version")
-          echo "version=$VERSION" >> $GITHUB_OUTPUT
-          echo "tag=v$VERSION" >> $GITHUB_OUTPUT
-
-      - name: Check tag does not already exist
-        run: |
-          TAG="${{ steps.version.outputs.tag }}"
-          if git ls-remote --tags origin "refs/tags/$TAG" | grep -q "$TAG"; then
-            echo "::error::Tag $TAG already exists. Bump the version in package.json before creating a new release."
-            exit 1
-          fi
-          echo "Tag $TAG does not exist yet — proceeding."
+          fetch-depth: 0
+          ref: master
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -37,14 +23,62 @@ jobs:
           node-version: 20
           cache: npm
 
+      - name: Determine target version (bump if needed)
+        id: version
+        run: |
+          set -euo pipefail
+
+          PKG_VERSION=$(node -p "require('./package.json').version")
+          echo "package.json version: $PKG_VERSION"
+
+          LATEST_TAG=$(git tag -l 'v*' | sed 's/^v//' | sort -V | tail -n1)
+          echo "latest released version: ${LATEST_TAG:-<none>}"
+
+          TARGET="$PKG_VERSION"
+
+          if [ -n "$LATEST_TAG" ]; then
+            HIGHEST=$(printf '%s\n%s\n' "$PKG_VERSION" "$LATEST_TAG" | sort -V | tail -n1)
+
+            if [ "$PKG_VERSION" = "$LATEST_TAG" ] || [ "$HIGHEST" = "$LATEST_TAG" ]; then
+              echo "package version ($PKG_VERSION) is <= latest release ($LATEST_TAG) — bumping patch."
+              BASE="$HIGHEST"
+              MAJOR=$(echo "$BASE" | cut -d. -f1)
+              MINOR=$(echo "$BASE" | cut -d. -f2)
+              PATCH=$(echo "$BASE" | cut -d. -f3)
+              TARGET="$MAJOR.$MINOR.$((PATCH + 1))"
+            fi
+          fi
+
+          echo "target version: $TARGET"
+          echo "version=$TARGET" >> "$GITHUB_OUTPUT"
+          echo "tag=v$TARGET" >> "$GITHUB_OUTPUT"
+          echo "bumped=$([ "$TARGET" = "$PKG_VERSION" ] && echo false || echo true)" >> "$GITHUB_OUTPUT"
+
       - name: Install dependencies
         run: npm ci
+
+      - name: Apply version bump and refresh lockfile
+        if: steps.version.outputs.bumped == 'true'
+        run: |
+          set -euo pipefail
+          npm version "${{ steps.version.outputs.version }}" --no-git-tag-version
+          npm install --package-lock-only
 
       - name: Type-check
         run: npx tsc --noEmit
 
       - name: Build
         run: npm run build
+
+      - name: Commit version bump to master
+        if: steps.version.outputs.bumped == 'true'
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add package.json package-lock.json
+          git commit -m "chore: bump version to ${{ steps.version.outputs.version }} [skip ci]"
+          git push origin HEAD:master
 
       - name: Package VSIX
         run: npx vsce package --no-dependencies -o cursor-rtl.vsix
@@ -54,6 +88,7 @@ jobs:
 
       - name: Create and push tag
         run: |
+          set -euo pipefail
           TAG="${{ steps.version.outputs.tag }}"
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
