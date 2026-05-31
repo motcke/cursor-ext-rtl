@@ -1,5 +1,10 @@
 (function() {
     var RTL_LOG = "[Cursor RTL]";
+    if (typeof window.__cursorRtlScanAll === 'function') {
+        window.__cursorRtlScanAll();
+        console.log(RTL_LOG, "re-inject: refreshed existing runtime");
+        return;
+    }
     console.log(RTL_LOG, "rtl.js started at", new Date().toISOString());
 
     function removeExistingCursorRtlStyles() {
