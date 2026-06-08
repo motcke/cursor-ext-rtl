@@ -44,6 +44,18 @@ Use this skill to take an RTL rendering issue from report to verified fix in thi
    - Keep code blocks and editor internals LTR.
    - Avoid broad `direction: rtl` rules on large containers unless the issue proves that is necessary.
    - Prefer CSS logical properties and per-element direction behavior over hard-coded left/right when possible.
+   - Apply the Direction Stability Rules below.
+
+## Direction Stability Rules
+
+These prevent flicker (direction oscillating many times per second).
+
+- Classify each element before setting direction:
+  - Chrome (headers, labels, buttons, steppers, icons, counters): force `direction: ltr` + `unicode-bidi: isolate`. Never derive their direction from content.
+  - Content (question/answer text, fully-Hebrew blocks): set direction from the element's own text. A container that is wholly RTL should align RTL as one unit.
+- Derive a container's direction only from a stable signal (its own text). Never from a value the scanner itself writes.
+- Never let CSS that reacts to a scanned direction also change layout/size (e.g. `:has([dir="rtl"])` flipping padding). The scanned `dir` → CSS layout change → mutation → re-scan loop is the flicker root cause.
+- Only leaf text elements should receive a computed `dir`; strip and re-assert chrome direction in the scan so stale `dir` cannot accumulate.
 
 5. Build and package.
    - Run `npm run lint`.
@@ -145,6 +157,7 @@ Before fixing, identify which category applies:
 - Mixed inline text: `unicode-bidi`, `dir="auto"`, or `plaintext` is missing or applied at the wrong level.
 - Exclusion problem: code/editor/mermaid/table internals are being scanned when they should not be.
 - Timing problem: content appears after initial scans and the MutationObserver does not catch it.
+- Feedback-loop flicker: the scanned `dir` triggers CSS that changes layout, which re-triggers the scan with a different result. Measure element `x`/`dir` over time (not single snapshots) to detect it; fix per the Direction Stability Rules.
 
 ## When Playwriter Fits
 

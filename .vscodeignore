@@ -3,6 +3,9 @@
 docs/**
 src/**
 node_modules/**
+scripts/**
+visual/**
+.cursor/**
 tsconfig.json
 esbuild.js
 .gitignore
