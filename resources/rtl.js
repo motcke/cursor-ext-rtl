@@ -758,9 +758,21 @@
         return Boolean(tiptap && !tiptap.closest(TIPTAP_PLAN_ALLOW) && !tiptap.closest(TIPTAP_PROMPT_ALLOW));
     }
 
+    /* Plan ProseMirror content is direction-managed exclusively through generated
+       CSS (see applyPlanDir). Writing a `dir` attribute into ProseMirror-owned DOM
+       makes ProseMirror revert the change and re-render its node views (e.g. the
+       mermaid diagram), which produces a scan -> dir write -> ProseMirror reset
+       loop that flickers the diagram. Never set `dir` directly inside it. */
+    function isInsidePlanEditorContent(el) {
+        if (!el || !el.closest) return false;
+        var proseMirror = el.closest('.ProseMirror');
+        return Boolean(proseMirror && proseMirror.closest(PLAN_CONTEXT));
+    }
+
     var scanTimer = null;
     var observedRoots = new WeakSet();
     var planRootCounter = 0;
+    var lastPlanStyleText = null;
     var RTL_TEXT = /[\u0590-\u05FF\u0600-\u06FF\u0750-\u077F\u08A0-\u08FF]/g;
     var LTR_TEXT = /[A-Za-z]/g;
 
@@ -969,6 +981,7 @@
 
     function applyManagedDir(el) {
         if (isExcludedElement(el)) return false;
+        if (isInsidePlanEditorContent(el)) return false;
         var desiredDir = getDesiredDir(el);
         var currentDir = el.getAttribute('dir');
         if (currentDir === desiredDir) {
@@ -1078,7 +1091,11 @@
                 } catch (e) {}
             }
         }
-        planStyle.textContent = rules.join('\n');
+        var nextPlanStyle = rules.join('\n');
+        if (nextPlanStyle !== lastPlanStyleText) {
+            lastPlanStyleText = nextPlanStyle;
+            planStyle.textContent = nextPlanStyle;
+        }
     }
 
     function clearAskQuestionChromeDir(root) {
