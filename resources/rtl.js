@@ -773,7 +773,7 @@
     var observedRoots = new WeakSet();
     var planRootCounter = 0;
     var lastPlanStyleText = null;
-    var RTL_TEXT = /[\u0590-\u05FF\u0600-\u06FF\u0750-\u077F\u08A0-\u08FF]/g;
+    var RTL_TEXT = /[\u0590-\u05FF\u0600-\u06FF\u0750-\u077F\u0870-\u089F\u08A0-\u08FF\uFB1D-\uFB4F\uFB50-\uFDFF\uFE70-\uFEFE]/g;
     var LTR_TEXT = /[A-Za-z]/g;
 
     function isExcludedMutation(mutation) {
@@ -974,7 +974,7 @@
     function shouldKeepQuestionnaireDir(el, currentDir, desiredDir) {
         if (!el.matches || currentDir !== 'rtl' || desiredDir !== 'ltr') return false;
         if (el.matches('.user-questionnaire-question-text')) {
-            return /[\u0590-\u05FF]/.test(getElementText(el));
+            return getMatches(getElementText(el), RTL_TEXT).length > 0;
         }
         return false;
     }
