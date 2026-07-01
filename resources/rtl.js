@@ -1159,8 +1159,8 @@
         }
     }
 
-    // --- Editor RTL (file editor direction) --------------------------------
-    // Extends the same content detection used for chat/plan to Cursor's file
+    // --- Editor RTL (code editor direction) --------------------------------
+    // Extends the same content detection used for chat/plan to Cursor's code
     // editor (Monaco). For each open editor we sample its visible lines, run
     // the shared getMajorityDir() scorer, and mark the editor RTL only when its
     // content is RTL-dominant — English/code editors are left untouched, so
@@ -1170,8 +1170,8 @@
     // Mode comes from window.__cursorRtlConfig.editorRtl at inject time and can
     // be updated live by the loader via window.__cursorRtlSetEditorMode():
     //   'auto'   – direction follows each editor's dominant language (default)
-    //   'always' – force every file editor RTL
-    //   'off'    – never touch the file editor
+    //   'always' – force every code editor RTL
+    //   'off'    – never touch the code editor
     var EDITOR_EXCLUDE_SELECTOR = [
         '.composer-rendered-message',
         '.markdown-root',

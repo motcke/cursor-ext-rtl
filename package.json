@@ -54,7 +54,7 @@
       },
       {
         "command": "cursorRtl.setEditorRtl",
-        "title": "Cursor RTL: Editor Direction (Auto / Always / Off)"
+        "title": "Cursor RTL: Code Editor Direction (Auto / Always / Off)"
       }
     ],
     "configuration": {
@@ -68,12 +68,12 @@
             "off"
           ],
           "enumDescriptions": [
-            "Editor direction follows each file's dominant language: Hebrew/Arabic/Persian files flow RTL, English and code stay LTR",
-            "Force every file editor to right-to-left",
-            "Never change the file editor's direction"
+            "Code editor direction follows each file's dominant language: Hebrew/Arabic/Persian files flow RTL, English and code stay LTR",
+            "Force every code editor to right-to-left",
+            "Never change the code editor's direction"
           ],
           "default": "auto",
-          "description": "Right-to-left direction for the file editor (Monaco). Applies live to open windows; no reload needed."
+          "description": "Right-to-left direction for the code editor — the main editing pane, including Markdown and plain-text files (Monaco). Applies live to open windows; no reload needed."
         },
         "cursorRtl.autoReapply": {
           "type": "boolean",

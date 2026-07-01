@@ -122,7 +122,7 @@ async function showQuickPick(): Promise<void> {
     }
 
     items.push({
-        label: '$(text-size) Editor Direction',
+        label: '$(text-size) Code Editor Direction',
         description: `Currently: ${getEditorRtlMode()}`,
     });
 
@@ -173,8 +173,8 @@ async function setEditorRtlCommand(): Promise<void> {
     const current = getEditorRtlMode();
     const options: Array<{ label: string; description: string; mode: EditorRtlMode }> = [
         { label: '$(sparkle) Auto', description: "Follow each file's dominant language", mode: 'auto' },
-        { label: '$(arrow-right) Always RTL', description: 'Force every file editor right-to-left', mode: 'always' },
-        { label: '$(circle-slash) Off', description: "Never change the editor's direction", mode: 'off' },
+        { label: '$(arrow-right) Always RTL', description: 'Force every code editor right-to-left', mode: 'always' },
+        { label: '$(circle-slash) Off', description: "Never change the code editor's direction", mode: 'off' },
     ];
 
     const picked = await vscode.window.showQuickPick(
@@ -182,7 +182,7 @@ async function setEditorRtlCommand(): Promise<void> {
             ...item,
             label: item.mode === current ? `${item.label} $(check)` : item.label,
         })),
-        { placeHolder: `Editor RTL direction (current: ${current})` }
+        { placeHolder: `Code editor RTL direction (current: ${current})` }
     );
 
     if (!picked) {
