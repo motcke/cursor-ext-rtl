@@ -31,6 +31,7 @@ Smart multi-language RTL support for [Cursor](https://cursor.com) AI Chat, Agent
 ## Features
 
 - **Smart multi-language algorithm** - detects text direction per element using weighted RTL/LTR scoring, so Hebrew, Arabic and Persian content is right-aligned while English-heavy content stays left-aligned
+- **File editor (Monaco) RTL** - the same per-file detection extends to the code/Markdown editor: RTL-dominant files flow right-to-left (with the vertical scrollbar moved to the left and left/right arrow keys swapped to match), while English and code editors stay untouched. Choose `auto` / `always` / `off` via setting or quick-pick
 - **One-click Enable/Disable** via Command Palette
 - **Status Bar indicator** showing current RTL patch state (ON / OFF / UPDATE NEEDED)
 - **Automatic update detection** when Cursor updates overwrite `main.js`
@@ -51,6 +52,7 @@ Smart multi-language RTL support for [Cursor](https://cursor.com) AI Chat, Agent
 | `Cursor RTL: Check Status` | Show whether the RTL patch is currently active |
 | `Cursor RTL: Re-apply After Update` | Re-apply patch after a Cursor update overwrote it |
 | `Cursor RTL: Check for Extension Updates` | Check GitHub releases for a newer extension version |
+| `Cursor RTL: Editor Direction (Auto / Always / Off)` | Choose how the file editor (Monaco) picks its direction |
 
 ## Status Bar
 
@@ -64,6 +66,7 @@ Click the status bar item for a quick-pick menu with available actions.
 
 | Setting | Default | Description |
 |---------|---------|-------------|
+| `cursorRtl.editorRtl` | `auto` | File editor (Monaco) direction. `auto` follows each file's dominant language, `always` forces RTL, `off` leaves the editor untouched. Applies live to open windows |
 | `cursorRtl.autoReapply` | `false` | Automatically re-apply RTL patch when Cursor updates overwrite `main.js` |
 | `cursorRtl.showStatusBar` | `true` | Show RTL status indicator in the status bar |
 | `cursorRtl.checkForExtensionUpdates` | `true` | Automatically check GitHub releases for Cursor RTL extension updates |
@@ -100,6 +103,8 @@ The direction algorithm assigns an explicit `dir="rtl"` or `dir="ltr"` to matchi
 
 Plan files and the Agents Window side Plan view use Cursor's TipTap/ProseMirror rich-text editor. Because that editor owns and may rewrite its DOM, Plan content also gets generated CSS rules scoped to the active Plan editor instead of relying only on direct `dir` attributes.
 
+For the file editor (Monaco), the same scorer samples each editor's visible lines and, when RTL-dominant (or when `cursorRtl.editorRtl` is `always`), marks it with a `data-cursor-rtl-dir="rtl"` attribute. Scoped CSS then flips the view lines to RTL, moves the vertical scrollbar to the left, and reorders Monaco's per-token spans so leading list markers and punctuation land on the right. Because Monaco's cursor controller has no RTL mode, a small keydown handler swaps the left/right arrows (keeping Shift/Alt/Ctrl/Meta) only while a marked-RTL editor is focused. The chosen mode is written to `~/.cursor-rtl-config.json`, which the loader watches so changes apply live without a reload.
+
 ### Safety measures
 
 - **Timestamped backups**: Before any modification, `main.js` is backed up as `main.js.rtl-backup-<timestamp>`
@@ -122,6 +127,7 @@ This restores the original `main.js` from the backup and removes the copied load
 - Cursor updates may overwrite `main.js`, requiring re-application of the patch
 - The extension shows a "[Unsupported]" warning in Cursor's title bar (same as any extension that modifies app files, like Custom CSS extensions)
 - Requires write permissions to Cursor's app directory (may need Administrator/sudo on some systems)
+- File editor RTL is a styling + input layer on top of Monaco, which has no native RTL mode. Visual order and arrow-key movement are corrected, but deeply mixed bidi lines can still have edge cases, and the line-number gutter stays on the left (moving it detaches Monaco's line-number positioning)
 
 ## Supported Cursor Versions
 

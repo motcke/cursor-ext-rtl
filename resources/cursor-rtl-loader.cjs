@@ -7,6 +7,16 @@
     var LOG_PREFIX = "[Cursor RTL Loader]";
     var homeDir = os.homedir();
     var LOG_FILE = path.join(homeDir, "cursor-rtl.log");
+    var CONFIG_FILE = path.join(homeDir, ".cursor-rtl-config.json");
+
+    function readConfig() {
+        try {
+            var raw = fs.readFileSync(CONFIG_FILE, "utf-8");
+            var parsed = JSON.parse(raw);
+            if (parsed && typeof parsed === "object") return parsed;
+        } catch (e) {}
+        return { editorRtl: "auto" };
+    }
 
     function log() {
         var args = Array.prototype.slice.call(arguments);
@@ -80,8 +90,10 @@
             return;
         }
         var script = fs.readFileSync(rtlPath, "utf-8");
-        log(label, "calling executeJavaScript, script length:", script.length);
-        wc.executeJavaScript(script)
+        var cfg = readConfig();
+        var configScript = "window.__cursorRtlConfig = " + JSON.stringify(cfg) + ";\n";
+        log(label, "calling executeJavaScript, script length:", script.length, "editorRtl:", cfg.editorRtl);
+        wc.executeJavaScript(configScript + script)
             .then(function() { return isRtlRuntimeAlive(wc); })
             .then(function(alive) {
                 wc.__rtlInjecting = false;
@@ -201,6 +213,49 @@
         }
     } catch (e) {
         log("getAllWindows error:", e.message);
+    }
+
+    // Live-push editor RTL mode changes to open workbench windows so toggling
+    // the setting/quick-pick applies without a reload.
+    function pushEditorMode(mode) {
+        try {
+            var wins = electron.BrowserWindow.getAllWindows();
+            for (var i = 0; i < wins.length; i++) {
+                (function(win) {
+                    try {
+                        var wc = win.webContents;
+                        if (!wc || wc.isDestroyed()) return;
+                        var url = wc.getURL ? wc.getURL() : "";
+                        if (!isWorkbenchUrl(url)) return;
+                        wc.executeJavaScript(
+                            "window.__cursorRtlSetEditorMode && window.__cursorRtlSetEditorMode(" +
+                            JSON.stringify(mode) + ")"
+                        ).catch(function() {});
+                    } catch (e) {}
+                })(wins[i]);
+            }
+        } catch (e) {
+            log("pushEditorMode error:", e.message);
+        }
+    }
+
+    try {
+        if (!fs.existsSync(CONFIG_FILE)) {
+            fs.writeFileSync(CONFIG_FILE, JSON.stringify({ editorRtl: "auto" }));
+        }
+        var configWatchTimer = null;
+        fs.watch(CONFIG_FILE, function() {
+            if (configWatchTimer) return;
+            configWatchTimer = setTimeout(function() {
+                configWatchTimer = null;
+                var cfg = readConfig();
+                log("config changed, pushing editorRtl:", cfg.editorRtl);
+                pushEditorMode(cfg.editorRtl || "auto");
+            }, 150);
+        });
+        log("watching config file:", CONFIG_FILE);
+    } catch (e) {
+        log("config watch not active:", e.message);
     }
 
     log("loader setup complete.");

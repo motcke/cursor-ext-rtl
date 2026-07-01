@@ -51,11 +51,30 @@
       {
         "command": "cursorRtl.checkForUpdates",
         "title": "Cursor RTL: Check for Extension Updates"
+      },
+      {
+        "command": "cursorRtl.setEditorRtl",
+        "title": "Cursor RTL: Editor Direction (Auto / Always / Off)"
       }
     ],
     "configuration": {
       "title": "Cursor RTL",
       "properties": {
+        "cursorRtl.editorRtl": {
+          "type": "string",
+          "enum": [
+            "auto",
+            "always",
+            "off"
+          ],
+          "enumDescriptions": [
+            "Editor direction follows each file's dominant language: Hebrew/Arabic/Persian files flow RTL, English and code stay LTR",
+            "Force every file editor to right-to-left",
+            "Never change the file editor's direction"
+          ],
+          "default": "auto",
+          "description": "Right-to-left direction for the file editor (Monaco). Applies live to open windows; no reload needed."
+        },
         "cursorRtl.autoReapply": {
           "type": "boolean",
           "default": false,

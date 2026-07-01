@@ -1,6 +1,6 @@
 import * as vscode from 'vscode';
 import * as fs from 'fs';
-import { validatePaths, getMainJsPath, getAppOutDir } from './paths';
+import { validatePaths, getMainJsPath, getAppOutDir, getConfigPath } from './paths';
 import {
     isPatched,
     hasBackups,
@@ -121,6 +121,11 @@ async function showQuickPick(): Promise<void> {
         });
     }
 
+    items.push({
+        label: '$(text-size) Editor Direction',
+        description: `Currently: ${getEditorRtlMode()}`,
+    });
+
     const picked = await vscode.window.showQuickPick(items, {
         placeHolder: 'Cursor RTL',
     });
@@ -135,9 +140,59 @@ async function showQuickPick(): Promise<void> {
         await vscode.commands.executeCommand('cursorRtl.disable');
     } else if (picked.label.includes('Re-apply')) {
         await vscode.commands.executeCommand('cursorRtl.reapply');
+    } else if (picked.label.includes('Editor Direction')) {
+        await vscode.commands.executeCommand('cursorRtl.setEditorRtl');
     } else if (picked.label.includes('Status')) {
         await vscode.commands.executeCommand('cursorRtl.status');
     }
+}
+
+type EditorRtlMode = 'auto' | 'always' | 'off';
+
+function getEditorRtlMode(): EditorRtlMode {
+    const value = vscode.workspace
+        .getConfiguration('cursorRtl')
+        .get<string>('editorRtl', 'auto');
+    return value === 'always' || value === 'off' ? value : 'auto';
+}
+
+// Persist the editor-RTL mode where the injected loader can read it. The
+// loader watches this file and pushes changes live into open windows.
+function writeEditorConfig(): void {
+    try {
+        fs.writeFileSync(
+            getConfigPath(),
+            JSON.stringify({ editorRtl: getEditorRtlMode() })
+        );
+    } catch {
+        // Non-critical: the loader defaults to 'auto' when the file is absent.
+    }
+}
+
+async function setEditorRtlCommand(): Promise<void> {
+    const current = getEditorRtlMode();
+    const options: Array<{ label: string; description: string; mode: EditorRtlMode }> = [
+        { label: '$(sparkle) Auto', description: "Follow each file's dominant language", mode: 'auto' },
+        { label: '$(arrow-right) Always RTL', description: 'Force every file editor right-to-left', mode: 'always' },
+        { label: '$(circle-slash) Off', description: "Never change the editor's direction", mode: 'off' },
+    ];
+
+    const picked = await vscode.window.showQuickPick(
+        options.map((item) => ({
+            ...item,
+            label: item.mode === current ? `${item.label} $(check)` : item.label,
+        })),
+        { placeHolder: `Editor RTL direction (current: ${current})` }
+    );
+
+    if (!picked) {
+        return;
+    }
+
+    await vscode.workspace
+        .getConfiguration('cursorRtl')
+        .update('editorRtl', picked.mode, vscode.ConfigurationTarget.Global);
+    action('editor_rtl_set', { mode: picked.mode });
 }
 
 async function enableCommand(context: vscode.ExtensionContext): Promise<void> {
@@ -529,6 +584,14 @@ export function activate(context: vscode.ExtensionContext): void {
         )
     );
 
+    context.subscriptions.push(
+        vscode.commands.registerCommand('cursorRtl.setEditorRtl', () =>
+            setEditorRtlCommand()
+        )
+    );
+
+    writeEditorConfig();
+
     const mainJsPath = getMainJsPath();
     const state = getPatchState(mainJsPath);
 
@@ -552,6 +615,9 @@ export function activate(context: vscode.ExtensionContext): void {
             e.affectsConfiguration('cursorRtl.updateCheckIntervalHours')
         ) {
             scheduleExtensionUpdateChecks(context);
+        }
+        if (e.affectsConfiguration('cursorRtl.editorRtl')) {
+            writeEditorConfig();
         }
     }, null, context.subscriptions);
 
