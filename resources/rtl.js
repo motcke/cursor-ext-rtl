@@ -580,6 +580,31 @@
             unicode-bidi: isolate !important;
             text-align: start !important;
         }
+
+        .monaco-editor[data-cursor-rtl-dir="rtl"] .view-lines {
+            direction: rtl !important;
+        }
+
+        .monaco-editor[data-cursor-rtl-dir="rtl"] .view-line {
+            text-align: right !important;
+            unicode-bidi: plaintext !important;
+        }
+
+        /* Monaco wraps each line's text in a <span dir="ltr"> with token spans
+           set to unicode-bidi: isolate. That explicit LTR base pins leading
+           list markers / punctuation / Latin runs to the left even on RTL
+           lines. Overriding the wrapper's direction reorders the isolated
+           token spans right-to-left, so "1." and friends land on the right. */
+        .monaco-editor[data-cursor-rtl-dir="rtl"] .view-line > span {
+            direction: rtl !important;
+        }
+
+        /* Move the vertical scrollbar to the left edge so it doesn't sit on
+           top of the RTL text's starting margin. */
+        .monaco-editor[data-cursor-rtl-dir="rtl"] .scrollbar.vertical {
+            left: 0 !important;
+            right: auto !important;
+        }
     `;
     document.head.appendChild(style);
     const planStyle = document.createElement('style');
@@ -1134,9 +1159,146 @@
         }
     }
 
+    // --- Editor RTL (code editor direction) --------------------------------
+    // Extends the same content detection used for chat/plan to Cursor's code
+    // editor (Monaco). For each open editor we sample its visible lines, run
+    // the shared getMajorityDir() scorer, and mark the editor RTL only when its
+    // content is RTL-dominant — English/code editors are left untouched, so
+    // this is safe to run automatically. A data attribute (not a class) is
+    // used because Monaco rewrites the editor element's className.
+    //
+    // Mode comes from window.__cursorRtlConfig.editorRtl at inject time and can
+    // be updated live by the loader via window.__cursorRtlSetEditorMode():
+    //   'auto'   – direction follows each editor's dominant language (default)
+    //   'always' – force every code editor RTL
+    //   'off'    – never touch the code editor
+    var EDITOR_EXCLUDE_SELECTOR = [
+        '.composer-rendered-message',
+        '.markdown-root',
+        '.markdown-section',
+        '.markdown-lexical-editor-container',
+        '.markdown-code-outer-container',
+        '.cursor-code-block-content',
+        '.plan-editor',
+        '.ui-plan-editor',
+        '.aislash-editor-input',
+        '.aislash-editor-input-readonly',
+        '.ui-prompt-input-editor__input',
+        '.ui-prompt-input-tiptap-readonly__content'
+    ].join(', ');
+
+    var EDITOR_LINE_SAMPLE = 80;
+    var editorMode = 'auto';
+    try {
+        if (window.__cursorRtlConfig && typeof window.__cursorRtlConfig.editorRtl === 'string') {
+            editorMode = window.__cursorRtlConfig.editorRtl;
+        }
+    } catch (e) {}
+
+    function normalizeEditorMode(mode) {
+        return (mode === 'auto' || mode === 'always' || mode === 'off') ? mode : 'auto';
+    }
+
+    function isFileEditor(editor) {
+        if (!editor || !editor.closest) return false;
+        // Skip chat/plan/markdown/code-block Monaco instances — those are
+        // handled elsewhere and should stay LTR.
+        return !editor.closest(EDITOR_EXCLUDE_SELECTOR);
+    }
+
+    function detectEditorDir(editor) {
+        var lines = editor.querySelectorAll('.view-line');
+        if (!lines.length) return 'ltr';
+        var sample = [];
+        var limit = Math.min(lines.length, EDITOR_LINE_SAMPLE);
+        for (var i = 0; i < limit; i++) {
+            sample.push(lines[i]);
+        }
+        return getMajorityDir(sample);
+    }
+
+    function setEditorDir(editor, dir) {
+        if (dir === 'rtl') {
+            if (editor.getAttribute('data-cursor-rtl-dir') !== 'rtl') {
+                editor.setAttribute('data-cursor-rtl-dir', 'rtl');
+            }
+        } else if (editor.hasAttribute('data-cursor-rtl-dir')) {
+            editor.removeAttribute('data-cursor-rtl-dir');
+        }
+    }
+
+    function applyEditorDir() {
+        var mode = normalizeEditorMode(editorMode);
+        var editors = document.querySelectorAll('.monaco-editor');
+        for (var i = 0; i < editors.length; i++) {
+            var editor = editors[i];
+            try {
+                if (mode === 'off' || !isFileEditor(editor)) {
+                    setEditorDir(editor, 'ltr');
+                    continue;
+                }
+                var dir = mode === 'always' ? 'rtl' : detectEditorDir(editor);
+                setEditorDir(editor, dir);
+            } catch (e) {}
+        }
+    }
+
+    window.__cursorRtlSetEditorMode = function(mode) {
+        editorMode = normalizeEditorMode(mode);
+        console.log(RTL_LOG, 'editor RTL mode:', editorMode);
+        scanAll();
+        return editorMode;
+    };
+
+    // Monaco's cursor controller has no RTL mode: pressing the physical
+    // left/right arrow always moves by *logical* character order, which reads
+    // backwards once we've flipped a line's visuals to RTL. We swap the two
+    // horizontal arrows (preserving Shift/Alt/Ctrl/Meta modifiers) but only
+    // while the focused editor is one we marked RTL, so LTR/code editors keep
+    // their native behaviour. Installed once; guarded against re-injection.
+    function installArrowSwap() {
+        if (window.__cursorRtlArrowSwapInstalled) return;
+        window.__cursorRtlArrowSwapInstalled = true;
+        document.addEventListener('keydown', function(e) {
+            try {
+                if (e.__cursorRtlSwapped) return;
+                if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return;
+                if (!e.target || !e.target.closest) return;
+                var editor = e.target.closest('.monaco-editor[data-cursor-rtl-dir="rtl"]');
+                if (!editor) return;
+                var textarea = editor.querySelector('textarea.inputarea');
+                if (!textarea) return;
+                e.preventDefault();
+                e.stopImmediatePropagation();
+                var toRight = e.key === 'ArrowLeft';
+                var swapKey = toRight ? 'ArrowRight' : 'ArrowLeft';
+                var swapCode = toRight ? 39 : 37;
+                var swapped = new KeyboardEvent('keydown', {
+                    key: swapKey,
+                    code: swapKey,
+                    bubbles: true,
+                    cancelable: true,
+                    shiftKey: e.shiftKey,
+                    altKey: e.altKey,
+                    ctrlKey: e.ctrlKey,
+                    metaKey: e.metaKey
+                });
+                // KeyboardEvent's constructor ignores keyCode/which; Monaco
+                // reads them, so define them explicitly.
+                Object.defineProperty(swapped, 'keyCode', { get: function() { return swapCode; } });
+                Object.defineProperty(swapped, 'which', { get: function() { return swapCode; } });
+                swapped.__cursorRtlSwapped = true;
+                textarea.dispatchEvent(swapped);
+            } catch (err) {}
+        }, true);
+        console.log(RTL_LOG, 'arrow-key swap installed for RTL editors');
+    }
+    // --- end Editor RTL ----------------------------------------------------
+
     function scanAll() {
         scanRoot(document);
         applyPlanDir();
+        applyEditorDir();
         try {
             walkShadows(document.documentElement, scanRoot);
         } catch (e) {}
@@ -1158,6 +1320,7 @@
 
     attachObserver(document.documentElement);
     attachAllCurrentShadowObservers();
+    installArrowSwap();
     scanAll();
     scheduleScan();
     setTimeout(function() {

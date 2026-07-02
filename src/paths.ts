@@ -1,6 +1,14 @@
 import * as vscode from 'vscode';
 import * as path from 'path';
 import * as fs from 'fs';
+import * as os from 'os';
+
+// Shared runtime config file, read by the injected loader (main process) to
+// pass live settings into rtl.js. Kept in the home directory because both the
+// extension host and the Electron loader can reach it on every platform.
+export function getConfigPath(): string {
+    return path.join(os.homedir(), '.cursor-rtl-config.json');
+}
 
 export function getAppOutDir(): string {
     const appRoot = vscode.env.appRoot;
