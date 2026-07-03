@@ -2,7 +2,7 @@
   "name": "cursor-rtl",
   "displayName": "Cursor RTL",
   "description": "Smart multi-language RTL support for Cursor AI Chat. Uses a purpose-built algorithm that auto-detects text direction per element - Hebrew, Arabic and Persian text is right-aligned while English stays left-aligned.",
-  "version": "1.2.0",
+  "version": "1.2.1",
   "publisher": "motcke",
   "license": "Apache-2.0",
   "icon": "resources/icon.png",
@@ -34,7 +34,7 @@
     "commands": [
       {
         "command": "cursorRtl.enable",
-        "title": "Cursor RTL: Enable RTL Support"
+        "title": "Cursor RTL: Enable RTL / Fix After Update"
       },
       {
         "command": "cursorRtl.disable",
@@ -43,10 +43,6 @@
       {
         "command": "cursorRtl.status",
         "title": "Cursor RTL: Check Status"
-      },
-      {
-        "command": "cursorRtl.reapply",
-        "title": "Cursor RTL: Re-apply After Update"
       },
       {
         "command": "cursorRtl.checkForUpdates",

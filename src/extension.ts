@@ -111,18 +111,16 @@ async function showQuickPick(): Promise<void> {
             { label: '$(circle-slash) Disable RTL', description: 'Remove patch and restore original main.js' },
             { label: '$(info) Check Status', description: 'Show current RTL patch status' }
         );
+    } else if (state === 'update-needed') {
+        items.push(
+            { label: '$(refresh) Fix RTL After Cursor Update', description: 'Re-apply the patch that the Cursor update removed' },
+            { label: '$(info) Check Status', description: 'Show current RTL patch status' }
+        );
     } else {
         items.push(
             { label: '$(check) Enable RTL', description: 'Apply RTL patch to Cursor' },
             { label: '$(info) Check Status', description: 'Show current RTL patch status' }
         );
-    }
-
-    if (state === 'update-needed' || state === 'off') {
-        items.unshift({
-            label: '$(refresh) Re-apply After Update',
-            description: 'Re-apply patch after Cursor update',
-        });
     }
 
     items.push({
@@ -143,12 +141,10 @@ async function showQuickPick(): Promise<void> {
         return;
     }
 
-    if (picked.label.includes('Enable')) {
+    if (picked.label.includes('Enable') || picked.label.includes('Fix RTL')) {
         await vscode.commands.executeCommand('cursorRtl.enable');
     } else if (picked.label.includes('Disable')) {
         await vscode.commands.executeCommand('cursorRtl.disable');
-    } else if (picked.label.includes('Re-apply')) {
-        await vscode.commands.executeCommand('cursorRtl.reapply');
     } else if (picked.label.includes('Editor Direction')) {
         await vscode.commands.executeCommand('cursorRtl.setEditorRtl');
     } else if (picked.label.includes('Diagnostics')) {
@@ -206,6 +202,11 @@ async function setEditorRtlCommand(): Promise<void> {
     action('editor_rtl_set', { mode: picked.mode });
 }
 
+// Single apply entry point for both "enable" and "fix after a Cursor
+// update" — the underlying operation is identical (copy loader + apply
+// patch, both idempotent). Only a first-ever enable asks for consent with a
+// dry-run preview; once the user has enabled before (backups exist or the
+// patch is present), it runs straight away.
 async function enableCommand(context: vscode.ExtensionContext): Promise<void> {
     const validation = validatePaths();
     if (!validation.valid) {
@@ -215,29 +216,34 @@ async function enableCommand(context: vscode.ExtensionContext): Promise<void> {
 
     const mainJsPath = validation.mainJsPath;
     const outDir = getAppOutDir();
+    const firstTime = !isPatched(mainJsPath) && !hasBackups(mainJsPath);
 
-    const dryRun = getDryRunSummary(mainJsPath);
-    const detail = dryRun.map((a) => `• ${a}`).join('\n');
+    if (firstTime) {
+        const dryRun = getDryRunSummary(mainJsPath);
+        const detail = dryRun.map((a) => `• ${a}`).join('\n');
 
-    const confirm = await vscode.window.showWarningMessage(
-        'Enable RTL support for Cursor?\n\nThis will modify Cursor app files.',
-        { modal: true, detail },
-        'Enable'
-    );
+        const confirm = await vscode.window.showWarningMessage(
+            'Enable RTL support for Cursor?\n\nThis will modify Cursor app files.',
+            { modal: true, detail },
+            'Enable'
+        );
 
-    if (confirm !== 'Enable') {
-        return;
+        if (confirm !== 'Enable') {
+            return;
+        }
     }
 
     try {
         copyLoader(outDir, context.extensionPath);
         applyPatch(mainJsPath);
-        action('patch_apply');
+        action(firstTime ? 'patch_apply' : 'patch_reapply');
         updateStatusBar('on');
         setupFileWatcher(mainJsPath, context);
 
         const restart = await vscode.window.showInformationMessage(
-            'RTL patch applied successfully! Please close and reopen all Cursor windows to activate.',
+            firstTime
+                ? 'RTL patch applied successfully! Please close and reopen all Cursor windows to activate.'
+                : 'RTL patch re-applied successfully! Please close and reopen all Cursor windows to activate.',
             'Quit Cursor',
             'Later'
         );
@@ -246,7 +252,7 @@ async function enableCommand(context: vscode.ExtensionContext): Promise<void> {
             await vscode.commands.executeCommand('workbench.action.quit');
         }
     } catch (err) {
-        actionError(err, { op: 'patch_apply' });
+        actionError(err, { op: firstTime ? 'patch_apply' : 'patch_reapply' });
         vscode.window.showErrorMessage(`Cursor RTL: ${handlePermissionError(err)}`);
     }
 }
@@ -314,10 +320,10 @@ async function statusCommand(): Promise<void> {
         case 'update-needed': {
             const choice = await vscode.window.showWarningMessage(
                 'Cursor RTL: Cursor was updated and the patch needs to be re-applied.',
-                'Re-apply Now'
+                'Fix Now'
             );
-            if (choice === 'Re-apply Now') {
-                await vscode.commands.executeCommand('cursorRtl.reapply');
+            if (choice === 'Fix Now') {
+                await vscode.commands.executeCommand('cursorRtl.enable');
             }
             break;
         }
@@ -547,38 +553,6 @@ function scheduleExtensionUpdateChecks(context: vscode.ExtensionContext): void {
     }, config.intervalMs);
 }
 
-async function reapplyCommand(context: vscode.ExtensionContext): Promise<void> {
-    const validation = validatePaths();
-    if (!validation.valid) {
-        vscode.window.showErrorMessage(`Cursor RTL: ${validation.error}`);
-        return;
-    }
-
-    const mainJsPath = validation.mainJsPath;
-    const outDir = getAppOutDir();
-
-    try {
-        copyLoader(outDir, context.extensionPath);
-        applyPatch(mainJsPath);
-        action('patch_reapply');
-        updateStatusBar('on');
-        setupFileWatcher(mainJsPath, context);
-
-        const restart = await vscode.window.showInformationMessage(
-            'RTL patch re-applied successfully! Please close and reopen all Cursor windows to activate.',
-            'Quit Cursor',
-            'Later'
-        );
-
-        if (restart === 'Quit Cursor') {
-            await vscode.commands.executeCommand('workbench.action.quit');
-        }
-    } catch (err) {
-        actionError(err, { op: 'patch_reapply' });
-        vscode.window.showErrorMessage(`Cursor RTL: ${handlePermissionError(err)}`);
-    }
-}
-
 function refreshLoader(context: vscode.ExtensionContext): void {
     try {
         const outDir = getAppOutDir();
@@ -611,12 +585,12 @@ function checkLoaderVersionGap(context: vscode.ExtensionContext): void {
             `Cursor RTL: The loader installed in Cursor is outdated ` +
             `(installed: ${installed ?? 'unknown'}, expected: ${bundled}). ` +
             `Re-apply the RTL patch to update it.`,
-            'Re-apply Now',
+            'Fix Now',
             'Later'
         )
         .then(async (choice) => {
-            if (choice === 'Re-apply Now') {
-                await vscode.commands.executeCommand('cursorRtl.reapply');
+            if (choice === 'Fix Now') {
+                await vscode.commands.executeCommand('cursorRtl.enable');
             }
         });
 }
@@ -640,15 +614,15 @@ function setupFileWatcher(
 
                         const config = vscode.workspace.getConfiguration('cursorRtl');
                         if (config.get<boolean>('autoReapply', false)) {
-                            await reapplyCommand(context);
+                            await enableCommand(context);
                         } else {
                             const choice = await vscode.window.showWarningMessage(
-                                'Cursor was updated and the RTL patch was removed. Re-apply?',
-                                'Re-apply',
+                                'Cursor was updated and the RTL patch was removed. Fix now?',
+                                'Fix Now',
                                 'Dismiss'
                             );
-                            if (choice === 'Re-apply') {
-                                await vscode.commands.executeCommand('cursorRtl.reapply');
+                            if (choice === 'Fix Now') {
+                                await vscode.commands.executeCommand('cursorRtl.enable');
                             }
                         }
                     }
@@ -696,12 +670,6 @@ export function activate(context: vscode.ExtensionContext): void {
     context.subscriptions.push(
         vscode.commands.registerCommand('cursorRtl.status', () =>
             statusCommand()
-        )
-    );
-
-    context.subscriptions.push(
-        vscode.commands.registerCommand('cursorRtl.reapply', () =>
-            reapplyCommand(context)
         )
     );
 

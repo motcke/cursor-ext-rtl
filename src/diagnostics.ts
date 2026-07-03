@@ -192,7 +192,7 @@ function diagnose(d: DiagnosticsData): Finding[] {
         findings.push({
             level: 'error',
             text: 'A Cursor update overwrote main.js — the RTL patch is no longer applied.',
-            fix: 'Run "Cursor RTL: Re-apply After Update". Tip: enable cursorRtl.autoReapply to do this automatically.',
+            fix: 'Run "Cursor RTL: Enable RTL / Fix After Update". Tip: enable cursorRtl.autoReapply to do this automatically.',
         });
     }
 
@@ -200,7 +200,7 @@ function diagnose(d: DiagnosticsData): Finding[] {
         findings.push({
             level: 'error',
             text: `main.js is patched but the loader file is missing (${d.installedLoaderPath}). Cursor logs a load error and RTL stays off.`,
-            fix: 'Run "Cursor RTL: Re-apply After Update" to restore the loader.',
+            fix: 'Run "Cursor RTL: Enable RTL / Fix After Update" to restore the loader.',
         });
     }
 
@@ -212,7 +212,7 @@ function diagnose(d: DiagnosticsData): Finding[] {
         findings.push({
             level: 'warn',
             text: `The installed loader (${d.installedLoaderVersion ?? 'pre-1.3.0'}) is older than the one bundled with this extension (${d.bundledLoaderVersion}).`,
-            fix: 'Run "Cursor RTL: Re-apply After Update". If it fails with a permission error, run Cursor as Administrator once and retry.',
+            fix: 'Run "Cursor RTL: Enable RTL / Fix After Update". If it fails with a permission error, run Cursor as Administrator once and retry.',
         });
     }
 
@@ -260,7 +260,7 @@ function diagnose(d: DiagnosticsData): Finding[] {
         findings.push({
             level: 'warn',
             text: 'main.js does not contain the expected Microsoft copyright signature.',
-            fix: 'This Cursor version may be unsupported; Enable/Re-apply will refuse to patch it.',
+            fix: 'This Cursor version may be unsupported; the Enable / Fix command will refuse to patch it.',
         });
     }
 

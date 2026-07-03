@@ -35,7 +35,7 @@ Smart multi-language RTL support for [Cursor](https://cursor.com) AI Chat, Agent
 - **One-click Enable/Disable** via Command Palette
 - **Status Bar indicator** showing current RTL patch state (ON / OFF / UPDATE NEEDED)
 - **Automatic update detection** when Cursor updates overwrite `main.js`
-- **Automatic extension updates** - new releases download and install themselves in the background with a small progress toast; you only confirm the window reload (manual download links appear if it fails), including detection of an outdated injected loader with a Re-apply offer
+- **Automatic extension updates** - new releases download and install themselves in the background with a small progress toast; you only confirm the window reload (manual download links appear if it fails), including detection of an outdated injected loader with an offer to fix it
 - **Diagnostics report** - one command collects patch/loader state, versions, settings and the loader log tail into a shareable Markdown report with a concrete diagnosis and suggested fix
 - **Auto re-apply option** to silently re-apply after Cursor updates
 - **Markdown table support** for mixed RTL/LTR table content, including Plan files
@@ -49,10 +49,9 @@ Smart multi-language RTL support for [Cursor](https://cursor.com) AI Chat, Agent
 
 | Command | Description |
 |---------|-------------|
-| `Cursor RTL: Enable RTL Support` | Backup `main.js`, apply RTL patch, copy the loader script |
+| `Cursor RTL: Enable RTL / Fix After Update` | Backup `main.js`, apply the RTL patch, copy the loader script. The same command also re-applies the patch after a Cursor update removed it (no confirmation needed the second time) |
 | `Cursor RTL: Disable RTL Support` | Restore `main.js` from backup, remove the loader script |
 | `Cursor RTL: Check Status` | Show whether the RTL patch is currently active |
-| `Cursor RTL: Re-apply After Update` | Re-apply patch after a Cursor update overwrote it |
 | `Cursor RTL: Check for Extension Updates` | Check GitHub releases now and install any newer version in the background |
 | `Cursor RTL: Code Editor Direction (Auto / Always / Off)` | Choose how the code editor (Monaco) — including Markdown/plain-text — picks its direction |
 | `Cursor RTL: Diagnostics` | Generate a full diagnostics report (patch/loader state, versions, log tail) with a suggested fix |
@@ -174,7 +173,7 @@ Start with `Cursor RTL: Diagnostics` — it pinpoints the most common problems (
 |-------|----------|
 | Permission denied | **Windows**: Run Cursor as Administrator. **macOS/Linux**: Fix file permissions with `sudo chown` |
 | RTL not working after Enable | Make sure to restart Cursor after enabling |
-| Patch removed after update | Use "Re-apply After Update" or enable `cursorRtl.autoReapply` setting |
+| Patch removed after update | Run "Enable RTL / Fix After Update" or enable `cursorRtl.autoReapply` setting |
 | Cursor won't start | Run "Disable RTL Support" or manually restore `main.js` from the backup file |
 
 ## License
