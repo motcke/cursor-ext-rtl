@@ -132,6 +132,20 @@ export function copyLoader(outDir: string, extensionPath: string): void {
     fs.copyFileSync(src, dest);
 }
 
+const LOADER_VERSION_RE = /var LOADER_VERSION = "(\d+\.\d+\.\d+)"/;
+
+// Reads the machine-readable version marker from a loader file. Returns null
+// when the file is missing or predates the marker (loaders before 1.3.0).
+export function getLoaderVersion(loaderPath: string): string | null {
+    try {
+        const content = fs.readFileSync(loaderPath, 'utf-8');
+        const match = content.match(LOADER_VERSION_RE);
+        return match ? match[1] : null;
+    } catch {
+        return null;
+    }
+}
+
 export function removeLoader(outDir: string): void {
     const p = path.join(outDir, LOADER_FILENAME);
     try {

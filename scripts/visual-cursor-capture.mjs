@@ -58,7 +58,8 @@ async function getViewport(page) {
 
 async function getInspection(page) {
   return page.evaluate(() => {
-    const rtlText = /[\u0590-\u05FF\u0600-\u06FF\u0750-\u077F\u0870-\u089F\u08A0-\u08FF\uFB1D-\uFB4F\uFB50-\uFDFF\uFE70-\uFEFE]/;
+    // Keep in sync with RTL_TEXT in resources/rtl.js
+    const rtlText = /[\u0590-\u05FF\u0600-\u06FF\u0700-\u074F\u0750-\u077F\u0780-\u07BF\u07C0-\u07FF\u0870-\u089F\u08A0-\u08FF\uFB1D-\uFB4F\uFB50-\uFDFF\uFE70-\uFEFE]/;
     const selectorGroups = {
       injectedStyles: 'style',
       markdown: '.markdown-root, .markdown-section',

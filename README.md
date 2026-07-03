@@ -35,11 +35,13 @@ Smart multi-language RTL support for [Cursor](https://cursor.com) AI Chat, Agent
 - **One-click Enable/Disable** via Command Palette
 - **Status Bar indicator** showing current RTL patch state (ON / OFF / UPDATE NEEDED)
 - **Automatic update detection** when Cursor updates overwrite `main.js`
-- **Extension update checks** with release-page and VSIX download shortcuts
+- **Automatic extension updates** - new releases download and install themselves in the background with a small progress toast; you only confirm the window reload (manual download links appear if it fails), including detection of an outdated injected loader with a Re-apply offer
+- **Diagnostics report** - one command collects patch/loader state, versions, settings and the loader log tail into a shareable Markdown report with a concrete diagnosis and suggested fix
 - **Auto re-apply option** to silently re-apply after Cursor updates
 - **Markdown table support** for mixed RTL/LTR table content, including Plan files
 - **Plan editor support** for Cursor's TipTap/ProseMirror-based `.plan.md` editor
 - **Agents Window support** including the agent conversation and side Plan view
+- **Chat history & tab titles** - Past Chats titles get per-title direction and wrap instead of truncating (in a slightly wider dropdown), the history search box follows your typing direction, and RTL chat-tab titles clip on the correct side
 - **Transactional patching** with automatic backup and rollback on failure
 - **Cross-platform** support for Windows, macOS, and Linux
 
@@ -51,8 +53,9 @@ Smart multi-language RTL support for [Cursor](https://cursor.com) AI Chat, Agent
 | `Cursor RTL: Disable RTL Support` | Restore `main.js` from backup, remove the loader script |
 | `Cursor RTL: Check Status` | Show whether the RTL patch is currently active |
 | `Cursor RTL: Re-apply After Update` | Re-apply patch after a Cursor update overwrote it |
-| `Cursor RTL: Check for Extension Updates` | Check GitHub releases for a newer extension version |
+| `Cursor RTL: Check for Extension Updates` | Check GitHub releases now and install any newer version in the background |
 | `Cursor RTL: Code Editor Direction (Auto / Always / Off)` | Choose how the code editor (Monaco) — including Markdown/plain-text — picks its direction |
+| `Cursor RTL: Diagnostics` | Generate a full diagnostics report (patch/loader state, versions, log tail) with a suggested fix |
 
 ## Status Bar
 
@@ -69,9 +72,8 @@ Click the status bar item for a quick-pick menu with available actions.
 | `cursorRtl.editorRtl` | `auto` | Code editor (Monaco) direction — the main editing pane, including Markdown and plain-text files. `auto` follows each file's dominant language, `always` forces RTL, `off` leaves the editor untouched. Applies live to open windows |
 | `cursorRtl.autoReapply` | `false` | Automatically re-apply RTL patch when Cursor updates overwrite `main.js` |
 | `cursorRtl.showStatusBar` | `true` | Show RTL status indicator in the status bar |
-| `cursorRtl.checkForExtensionUpdates` | `true` | Automatically check GitHub releases for Cursor RTL extension updates |
+| `cursorRtl.checkForExtensionUpdates` | `true` | Automatically check GitHub releases for Cursor RTL updates and install them in the background (small progress toast; you only confirm the window reload) |
 | `cursorRtl.updateCheckIntervalHours` | `6` | How often to check for extension updates while Cursor is open |
-| `cursorRtl.updateRemindLaterHours` | `24` | How long to wait before showing the same update again after choosing Remind Later |
 
 ## Installation
 
@@ -128,6 +130,7 @@ This restores the original `main.js` from the backup and removes the copied load
 - The extension shows a "[Unsupported]" warning in Cursor's title bar (same as any extension that modifies app files, like Custom CSS extensions)
 - Requires write permissions to Cursor's app directory (may need Administrator/sudo on some systems)
 - Code editor RTL is a styling + input layer on top of Monaco, which has no native RTL mode. Visual order and arrow-key movement are corrected, but deeply mixed bidi lines can still have edge cases, and the line-number gutter stays on the left (moving it detaches Monaco's line-number positioning)
+- AI agent **extensions** that run inside Cursor (Claude Code, Codex, Gemini Code Assist, …) render in their own isolated webviews, which this extension does not touch. For RTL inside those panels see [rtl-for-vs-code-agents](https://github.com/GuyRonnen/rtl-for-vs-code-agents) — the two extensions cover different surfaces and can be installed side by side
 
 ## Supported Cursor Versions
 
@@ -164,6 +167,8 @@ Persistent opt-out can be configured at the operating system level by setting `C
 The loader writes a local debug log to `cursor-rtl.log` in the user's home directory. It is not sent by telemetry, but it may include local extension paths and workbench URLs, so review it before sharing.
 
 ## Troubleshooting
+
+Start with `Cursor RTL: Diagnostics` — it pinpoints the most common problems (patch removed, stale loader, missing restart, permissions) and tells you the exact fix. When opening a GitHub issue, please attach its report.
 
 | Issue | Solution |
 |-------|----------|

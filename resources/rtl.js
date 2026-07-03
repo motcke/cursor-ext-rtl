@@ -581,6 +581,40 @@
             text-align: start !important;
         }
 
+        /* Chat history dropdown ("Show Chat History"): widen it a little and
+           let titles wrap instead of ellipsis-truncating so RTL titles stay
+           readable. Scoped with :has() so other ui-menu instances (context
+           menus etc.) are untouched. */
+        .ui-menu:has(.compact-agent-history-react-menu-content) {
+            width: 320px !important;
+            max-width: calc(100vw - 40px) !important;
+        }
+
+        .compact-agent-history-react-menu-content {
+            width: auto !important;
+        }
+
+        .compact-agent-history-react-menu-label {
+            white-space: normal !important;
+            overflow: visible !important;
+            text-overflow: clip !important;
+            unicode-bidi: plaintext !important;
+            text-align: start !important;
+        }
+
+        .compact-agent-history-search-input {
+            unicode-bidi: plaintext !important;
+        }
+
+        /* Chat tab titles: the tab clips with ellipsis in LTR direction; when
+           a title is RTL, flipping the direction moves the ellipsis to the
+           left so the beginning of the title stays visible. */
+        .composer-tab-label[dir="rtl"],
+        .composer-tab-label[dir="rtl"] .label-name {
+            direction: rtl !important;
+            unicode-bidi: plaintext !important;
+        }
+
         .monaco-editor[data-cursor-rtl-dir="rtl"] .view-lines {
             direction: rtl !important;
         }
@@ -638,6 +672,10 @@
         '.composer-rendered-message table td',
         '.markdown-table th',
         '.markdown-table td',
+        /* Chat history dropdown + chat tab titles */
+        '.compact-agent-history-react-menu-label',
+        '.compact-agent-history-search-input',
+        '.composer-tab-label',
         '.composer-human-message p',
         '.composer-human-message div',
         '.aislash-editor-input p',
@@ -798,7 +836,9 @@
     var observedRoots = new WeakSet();
     var planRootCounter = 0;
     var lastPlanStyleText = null;
-    var RTL_TEXT = /[\u0590-\u05FF\u0600-\u06FF\u0750-\u077F\u0870-\u089F\u08A0-\u08FF\uFB1D-\uFB4F\uFB50-\uFDFF\uFE70-\uFEFE]/g;
+    /* Hebrew, Arabic (incl. supplement/extended/presentation forms), Syriac
+       (0700-074F), Thaana (0780-07BF), N'Ko (07C0-07FF). */
+    var RTL_TEXT = /[\u0590-\u05FF\u0600-\u06FF\u0700-\u074F\u0750-\u077F\u0780-\u07BF\u07C0-\u07FF\u0870-\u089F\u08A0-\u08FF\uFB1D-\uFB4F\uFB50-\uFDFF\uFE70-\uFEFE]/g;
     var LTR_TEXT = /[A-Za-z]/g;
 
     function isExcludedMutation(mutation) {
@@ -984,6 +1024,10 @@
     }
 
     function getDesiredDir(el) {
+        /* The history search box is a real <input>: typing changes only its
+           value (no DOM mutation), so a scan-time rtl/ltr decision would go
+           stale. dir="auto" lets the browser follow the value natively. */
+        if (el.matches && el.matches('.compact-agent-history-search-input')) return 'auto';
         if (el.matches && el.matches('ol, ul')) return getListDir(el);
         if (el.matches && el.matches('table')) return getTableDir(el);
         var optionDir = getQuestionnaireOptionDir(el);

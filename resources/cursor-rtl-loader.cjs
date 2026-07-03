@@ -8,6 +8,11 @@
     var homeDir = os.homedir();
     var LOG_FILE = path.join(homeDir, "cursor-rtl.log");
     var CONFIG_FILE = path.join(homeDir, ".cursor-rtl-config.json");
+    // Machine-readable version marker. The extension compares this string
+    // between its bundled loader and the copy installed next to main.js to
+    // detect when the installed loader is stale and a Re-apply is needed.
+    // Keep the exact `var LOADER_VERSION = "x.y.z"` form — it is parsed by regex.
+    var LOADER_VERSION = "1.3.1";
 
     function readConfig() {
         try {
@@ -31,7 +36,7 @@
         console.warn(LOG_PREFIX, "FATAL: cannot write log to", LOG_FILE, initErr.message);
     }
 
-    log("pid=" + process.pid, "version=1.2.0");
+    log("pid=" + process.pid, "version=" + LOADER_VERSION);
 
     // --- require electron (this is the most likely failure point) ---
     var electron;

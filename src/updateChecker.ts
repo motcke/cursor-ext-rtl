@@ -1,3 +1,4 @@
+import * as fs from 'fs';
 import * as https from 'https';
 
 const GITHUB_REPO = 'motcke/cursor-ext-rtl';
@@ -107,6 +108,64 @@ function collectResponse(
         }
     });
     res.on('error', reject);
+}
+
+const DOWNLOAD_TIMEOUT_MS = 60_000;
+const MAX_DOWNLOAD_REDIRECTS = 5;
+
+// Downloads a release asset to destPath. GitHub asset URLs redirect to a CDN,
+// so redirects are followed (up to MAX_DOWNLOAD_REDIRECTS).
+export function downloadFile(
+    url: string,
+    destPath: string,
+    redirectsLeft: number = MAX_DOWNLOAD_REDIRECTS
+): Promise<void> {
+    return new Promise((resolve, reject) => {
+        const req = https.get(
+            url,
+            {
+                headers: {
+                    'User-Agent': 'cursor-rtl-extension',
+                    Accept: 'application/octet-stream',
+                },
+            },
+            (res) => {
+                const status = res.statusCode ?? 0;
+
+                if ([301, 302, 303, 307, 308].includes(status)) {
+                    res.resume();
+                    const location = res.headers.location;
+                    if (!location || redirectsLeft <= 0) {
+                        reject(new Error('Too many redirects while downloading VSIX'));
+                        return;
+                    }
+                    downloadFile(location, destPath, redirectsLeft - 1).then(resolve, reject);
+                    return;
+                }
+
+                if (status !== 200) {
+                    res.resume();
+                    reject(new Error(`Download failed with HTTP ${status}`));
+                    return;
+                }
+
+                const file = fs.createWriteStream(destPath);
+                const fail = (err: Error) => {
+                    file.destroy();
+                    fs.unlink(destPath, () => reject(err));
+                };
+                res.pipe(file);
+                file.on('finish', () => file.close(() => resolve()));
+                file.on('error', fail);
+                res.on('error', fail);
+            }
+        );
+        req.on('error', reject);
+        req.setTimeout(DOWNLOAD_TIMEOUT_MS, () => {
+            req.destroy();
+            reject(new Error('Download timed out'));
+        });
+    });
 }
 
 export async function checkForExtensionUpdate(currentVersion: string): Promise<UpdateCheckResult> {

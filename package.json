@@ -55,6 +55,10 @@
       {
         "command": "cursorRtl.setEditorRtl",
         "title": "Cursor RTL: Code Editor Direction (Auto / Always / Off)"
+      },
+      {
+        "command": "cursorRtl.diagnostics",
+        "title": "Cursor RTL: Diagnostics"
       }
     ],
     "configuration": {
@@ -88,7 +92,7 @@
         "cursorRtl.checkForExtensionUpdates": {
           "type": "boolean",
           "default": true,
-          "description": "Automatically check GitHub releases for Cursor RTL extension updates"
+          "description": "Automatically check GitHub releases for Cursor RTL updates and install them in the background (a small toast shows progress; you only confirm the window reload)"
         },
         "cursorRtl.updateCheckIntervalHours": {
           "type": "number",

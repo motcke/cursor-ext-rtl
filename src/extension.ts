@@ -1,5 +1,6 @@
 import * as vscode from 'vscode';
 import * as fs from 'fs';
+import * as path from 'path';
 import { validatePaths, getMainJsPath, getAppOutDir, getConfigPath } from './paths';
 import {
     isPatched,
@@ -7,10 +8,13 @@ import {
     applyPatch,
     removePatch,
     copyLoader,
+    getLoaderVersion,
     getDryRunSummary,
     handlePermissionError,
 } from './patcher';
-import { checkForExtensionUpdate, UpdateCheckResult } from './updateChecker';
+import { LOADER_FILENAME } from './constants';
+import { checkForExtensionUpdate, downloadFile, UpdateCheckResult } from './updateChecker';
+import { runDiagnostics } from './diagnostics';
 import { init as initActions, action, error as actionError, dispose as disposeActions } from './actions';
 
 let statusBarItem: vscode.StatusBarItem;
@@ -126,6 +130,11 @@ async function showQuickPick(): Promise<void> {
         description: `Currently: ${getEditorRtlMode()}`,
     });
 
+    items.push({
+        label: '$(pulse) Diagnostics',
+        description: 'Generate a full diagnostics report',
+    });
+
     const picked = await vscode.window.showQuickPick(items, {
         placeHolder: 'Cursor RTL',
     });
@@ -142,6 +151,8 @@ async function showQuickPick(): Promise<void> {
         await vscode.commands.executeCommand('cursorRtl.reapply');
     } else if (picked.label.includes('Editor Direction')) {
         await vscode.commands.executeCommand('cursorRtl.setEditorRtl');
+    } else if (picked.label.includes('Diagnostics')) {
+        await vscode.commands.executeCommand('cursorRtl.diagnostics');
     } else if (picked.label.includes('Status')) {
         await vscode.commands.executeCommand('cursorRtl.status');
     }
@@ -335,48 +346,131 @@ function getUpdateCheckConfig(): {
     };
 }
 
-async function waitForWindowFocus(): Promise<void> {
-    if (vscode.window.state.focused) {
-        return;
-    }
+const PENDING_UPDATE_KEY = 'pendingUpdateVersion';
 
-    await new Promise<void>((resolve) => {
-        const disposable = vscode.window.onDidChangeWindowState((state) => {
-            if (state.focused) {
-                disposable.dispose();
-                resolve();
-            }
-        });
-    });
-}
-
-async function showExtensionUpdateNotification(
+// A new release was found: install it automatically. The only UI is small
+// toasts (download/install progress, then a reload offer) — no modal dialogs
+// and no user action beyond the final reload.
+async function handleUpdateAvailable(
+    context: vscode.ExtensionContext,
     result: Extract<UpdateCheckResult, { status: 'updateAvailable' }>,
     mode: UpdateCheckMode
 ): Promise<void> {
-    if (mode !== 'manual') {
-        await waitForWindowFocus();
-    }
-
     action('version_available', { mode, version: result.remoteVersion });
 
+    // Release without a VSIX asset: nothing to auto-install.
+    if (!result.vsixDownloadUrl) {
+        if (mode === 'manual') {
+            const choice = await vscode.window.showInformationMessage(
+                `Cursor RTL: A new version is available (${result.remoteVersion}).`,
+                'Open Release Page'
+            );
+            if (choice === 'Open Release Page') {
+                action('update_action_release_page', { mode, version: result.remoteVersion });
+                await vscode.env.openExternal(vscode.Uri.parse(result.releaseUrl));
+            }
+        }
+        return;
+    }
+
+    // Already installed (possibly by another window) and awaiting reload —
+    // don't reinstall and re-toast on every periodic check.
+    if (context.globalState.get<string>(PENDING_UPDATE_KEY) === result.remoteVersion) {
+        if (mode === 'manual') {
+            await offerReload(
+                `Cursor RTL ${result.remoteVersion} is already installed. Reload the window to activate it.`
+            );
+        }
+        return;
+    }
+
+    await autoInstallExtensionUpdate(context, result, mode);
+}
+
+async function offerReload(message: string): Promise<void> {
+    const reload = await vscode.window.showInformationMessage(
+        message,
+        'Reload Window',
+        'Later'
+    );
+    if (reload === 'Reload Window') {
+        await vscode.commands.executeCommand('workbench.action.reloadWindow');
+    }
+}
+
+// Downloads the release VSIX and installs it in the background. On any
+// failure, falls back to the manual flow (browser download links).
+async function autoInstallExtensionUpdate(
+    context: vscode.ExtensionContext,
+    result: Extract<UpdateCheckResult, { status: 'updateAvailable' }>,
+    mode: UpdateCheckMode
+): Promise<void> {
+    const vsixDir = context.globalStorageUri.fsPath;
+    // Per-process file name: several open windows may update concurrently,
+    // and a shared path would let one window overwrite a VSIX mid-install.
+    const vsixPath = path.join(
+        vsixDir,
+        `cursor-rtl-${result.remoteVersion}-${process.pid}.vsix`
+    );
+
+    try {
+        await vscode.window.withProgress(
+            {
+                location: vscode.ProgressLocation.Notification,
+                title: `Cursor RTL: Updating to ${result.remoteVersion}`,
+            },
+            async (progress) => {
+                progress.report({ message: 'Downloading…' });
+                fs.mkdirSync(vsixDir, { recursive: true });
+                await downloadFile(result.vsixDownloadUrl as string, vsixPath);
+                progress.report({ message: 'Installing…' });
+                await vscode.commands.executeCommand(
+                    'workbench.extensions.installExtension',
+                    vscode.Uri.file(vsixPath)
+                );
+            }
+        );
+    } catch (err) {
+        actionError(err, { op: 'update_install', mode, version: result.remoteVersion });
+        cleanupVsix(vsixPath);
+        await showManualUpdateFallback(result, mode, err);
+        return;
+    }
+
+    action('update_install_ok', { mode, version: result.remoteVersion });
+    cleanupVsix(vsixPath);
+    await context.globalState.update(PENDING_UPDATE_KEY, result.remoteVersion);
+
+    await offerReload(
+        `Cursor RTL updated to ${result.remoteVersion}. Reload the window to activate it.`
+    );
+}
+
+function cleanupVsix(vsixPath: string): void {
+    try {
+        if (fs.existsSync(vsixPath)) {
+            fs.unlinkSync(vsixPath);
+        }
+    } catch {
+        // best-effort
+    }
+}
+
+async function showManualUpdateFallback(
+    result: Extract<UpdateCheckResult, { status: 'updateAvailable' }>,
+    mode: UpdateCheckMode,
+    err: unknown
+): Promise<void> {
+    const message = err instanceof Error ? err.message : String(err);
     const openReleasePage: vscode.MessageItem = { title: 'Open Release Page' };
     const downloadVsix: vscode.MessageItem = { title: 'Download VSIX' };
-    const remindLater: vscode.MessageItem = {
-        title: 'Remind me later',
-        isCloseAffordance: true,
-    };
     const actions: vscode.MessageItem[] = [openReleasePage];
     if (result.vsixDownloadUrl) {
         actions.push(downloadVsix);
     }
-    actions.push(remindLater);
 
-    const message =
-        `Cursor RTL: A new version is available (${result.remoteVersion}). Update now?`;
-    const choice = await vscode.window.showInformationMessage(
-        message,
-        { modal: true },
+    const choice = await vscode.window.showWarningMessage(
+        `Cursor RTL: Automatic update failed (${message}). You can update manually instead.`,
         ...actions
     );
 
@@ -386,8 +480,6 @@ async function showExtensionUpdateNotification(
     } else if (choice === downloadVsix && result.vsixDownloadUrl) {
         action('update_action_download_vsix', { mode, version: result.remoteVersion });
         await vscode.env.openExternal(vscode.Uri.parse(result.vsixDownloadUrl));
-    } else if (choice === remindLater) {
-        action('update_action_remind_later', { mode, version: result.remoteVersion });
     }
 }
 
@@ -414,6 +506,8 @@ async function runExtensionUpdateCheck(
     }
 
     if (result.status === 'upToDate') {
+        // Any previously auto-installed update is now the running version.
+        void context.globalState.update(PENDING_UPDATE_KEY, undefined);
         if (mode === 'manual') {
             const version = result.remoteVersion ?? result.currentVersion;
             vscode.window.showInformationMessage(`Cursor RTL is up to date (${version}).`);
@@ -421,7 +515,7 @@ async function runExtensionUpdateCheck(
         return;
     }
 
-    await showExtensionUpdateNotification(result, mode);
+    await handleUpdateAvailable(context, result, mode);
 }
 
 function clearScheduledUpdateChecks(): void {
@@ -492,6 +586,39 @@ function refreshLoader(context: vscode.ExtensionContext): void {
     } catch {
         // Non-critical — loader is self-discovering, works even if outdated
     }
+}
+
+// After refreshLoader has tried to silently update the installed loader, a
+// remaining version gap means the copy failed (usually permissions on the
+// Cursor app directory) or the loader file is gone — offer a proper Re-apply,
+// which surfaces permission errors with guidance.
+function checkLoaderVersionGap(context: vscode.ExtensionContext): void {
+    const bundled = getLoaderVersion(
+        path.join(context.extensionPath, 'resources', LOADER_FILENAME)
+    );
+    if (!bundled) {
+        return;
+    }
+
+    const installed = getLoaderVersion(path.join(getAppOutDir(), LOADER_FILENAME));
+    if (installed === bundled) {
+        return;
+    }
+
+    action('loader_gap', { bundled, installed: installed ?? 'missing-or-pre-1.3.0' });
+    void vscode.window
+        .showWarningMessage(
+            `Cursor RTL: The loader installed in Cursor is outdated ` +
+            `(installed: ${installed ?? 'unknown'}, expected: ${bundled}). ` +
+            `Re-apply the RTL patch to update it.`,
+            'Re-apply Now',
+            'Later'
+        )
+        .then(async (choice) => {
+            if (choice === 'Re-apply Now') {
+                await vscode.commands.executeCommand('cursorRtl.reapply');
+            }
+        });
 }
 
 function setupFileWatcher(
@@ -590,6 +717,12 @@ export function activate(context: vscode.ExtensionContext): void {
         )
     );
 
+    context.subscriptions.push(
+        vscode.commands.registerCommand('cursorRtl.diagnostics', () =>
+            runDiagnostics(context)
+        )
+    );
+
     writeEditorConfig();
 
     const mainJsPath = getMainJsPath();
@@ -599,6 +732,7 @@ export function activate(context: vscode.ExtensionContext): void {
 
     if (state === 'on') {
         refreshLoader(context);
+        checkLoaderVersionGap(context);
     }
 
     if (fs.existsSync(mainJsPath) && (state === 'on' || state === 'update-needed')) {
