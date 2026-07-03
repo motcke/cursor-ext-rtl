@@ -31,7 +31,7 @@
         console.warn(LOG_PREFIX, "FATAL: cannot write log to", LOG_FILE, initErr.message);
     }
 
-    log("pid=" + process.pid, "version=1.3.0");
+    log("pid=" + process.pid, "version=1.2.0");
 
     // --- require electron (this is the most likely failure point) ---
     var electron;
@@ -41,6 +41,23 @@
     } catch(e) {
         log("FATAL: require('electron') failed:", e.message);
         return;
+    }
+
+    // Extension dirs must be compared by semver, not lexicographically:
+    // "1.1.10" sorts before "1.1.9" as a string but is the newer version.
+    function parseExtensionVersion(dirName) {
+        var m = dirName.match(/^motcke\.cursor-rtl-(\d+)\.(\d+)\.(\d+)/);
+        if (!m) return [0, 0, 0];
+        return [Number(m[1]), Number(m[2]), Number(m[3])];
+    }
+
+    function compareExtensionDirs(a, b) {
+        var va = parseExtensionVersion(a);
+        var vb = parseExtensionVersion(b);
+        for (var i = 0; i < 3; i++) {
+            if (va[i] !== vb[i]) return va[i] - vb[i];
+        }
+        return 0;
     }
 
     function findRtlScript() {
@@ -59,7 +76,7 @@
             var entries = fs.readdirSync(extDir);
             var dirs = entries
                 .filter(function(d) { return /^motcke\.cursor-rtl-\d/.test(d); })
-                .sort();
+                .sort(compareExtensionDirs);
             log("cursor-rtl dirs found:", JSON.stringify(dirs));
             if (dirs.length > 0) {
                 var rtlPath = path.join(extDir, dirs[dirs.length - 1], "resources", "rtl.js");
