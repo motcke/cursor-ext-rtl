@@ -104,3 +104,18 @@ jobs:
             cursor-rtl.vsix
             cursor-rtl.vsix.sha256
           generate_release_notes: true
+
+      # Tags pushed with GITHUB_TOKEN don't trigger other workflows, so the
+      # publish-openvsx job in build-vsix.yml never fires for releases made
+      # here — publish directly instead.
+      - name: Publish to Open VSX
+        env:
+          OVSX_PAT: ${{ secrets.OVSX_PAT }}
+        run: |
+          set -euo pipefail
+          if [ -z "$OVSX_PAT" ]; then
+            echo "::warning::OVSX_PAT secret is not set - skipping Open VSX publish. See PUBLISHING.md."
+          else
+            npx --yes ovsx@latest verify-pat -p "$OVSX_PAT" motcke
+            npx --yes ovsx@latest publish cursor-rtl.vsix -p "$OVSX_PAT"
+          fi
