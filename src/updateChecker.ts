@@ -1,5 +1,6 @@
 import * as fs from 'fs';
 import * as https from 'https';
+import * as path from 'path';
 
 const GITHUB_REPO = 'motcke/cursor-ext-rtl';
 const RELEASES_URL = `https://api.github.com/repos/${GITHUB_REPO}/releases/latest`;
@@ -166,6 +167,27 @@ export function downloadFile(
             reject(new Error('Download timed out'));
         });
     });
+}
+
+// Cursor stamps __metadata into the installed package.json for every install,
+// but only gallery installs carry marketplace-assigned identifiers
+// (id/publisherId, sometimes source: 'gallery'); manual VSIX installs get
+// installedTimestamp alone. Marketplace installs are auto-updated by Cursor
+// itself, so our GitHub-based checker stands down for them. Unknown/parse
+// failure counts as a VSIX install — the safe default is to keep checking.
+export function isMarketplaceInstall(extensionPath: string): boolean {
+    try {
+        const raw = fs.readFileSync(path.join(extensionPath, 'package.json'), 'utf-8');
+        const metadata = (JSON.parse(raw) as {
+            __metadata?: { source?: string; id?: string; publisherId?: string };
+        }).__metadata;
+        return (
+            !!metadata &&
+            (metadata.source === 'gallery' || !!metadata.id || !!metadata.publisherId)
+        );
+    } catch {
+        return false;
+    }
 }
 
 export async function checkForExtensionUpdate(currentVersion: string): Promise<UpdateCheckResult> {

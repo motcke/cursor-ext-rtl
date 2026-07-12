@@ -5,6 +5,7 @@ import * as path from 'path';
 import { getMainJsPath, getAppOutDir, getConfigPath } from './paths';
 import { isPatched, getLoaderVersion } from './patcher';
 import { LOADER_FILENAME, BACKUP_PREFIX } from './constants';
+import { isMarketplaceInstall } from './updateChecker';
 import { action } from './actions';
 
 const LOG_TAIL_LINES = 15;
@@ -17,6 +18,7 @@ interface Finding {
 
 interface DiagnosticsData {
     extensionVersion: string;
+    installSource: 'marketplace' | 'vsix';
     clientVersion: string;
     platform: string;
     arch: string;
@@ -138,6 +140,7 @@ function collectData(context: vscode.ExtensionContext): DiagnosticsData {
 
     return {
         extensionVersion: typeof packageVersion === 'string' ? packageVersion : 'unknown',
+        installSource: isMarketplaceInstall(context.extensionPath) ? 'marketplace' : 'vsix',
         clientVersion: vscode.version,
         platform: process.platform,
         arch: process.arch,
@@ -306,6 +309,7 @@ function formatReport(d: DiagnosticsData, findings: Finding[]): string {
         `| Item | Value |`,
         `|------|-------|`,
         `| Extension | ${d.extensionVersion} |`,
+        `| Install source | ${d.installSource === 'marketplace' ? 'marketplace (updated by Cursor)' : 'manual VSIX (self-updater active)'} |`,
         `| Loader (bundled) | ${d.bundledLoaderVersion ?? 'unknown'} |`,
         `| Loader (installed) | ${d.installedLoaderExists ? d.installedLoaderVersion ?? 'pre-1.3.0 (no marker)' : 'not installed'} |`,
         `| Loader (running) | ${d.runningLoaderVersion ?? 'unknown'} |`,

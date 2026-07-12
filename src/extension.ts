@@ -13,7 +13,12 @@ import {
     handlePermissionError,
 } from './patcher';
 import { LOADER_FILENAME } from './constants';
-import { checkForExtensionUpdate, downloadFile, UpdateCheckResult } from './updateChecker';
+import {
+    checkForExtensionUpdate,
+    downloadFile,
+    isMarketplaceInstall,
+    UpdateCheckResult,
+} from './updateChecker';
 import { runDiagnostics } from './diagnostics';
 import { init as initActions, action, error as actionError, dispose as disposeActions } from './actions';
 
@@ -541,6 +546,14 @@ function scheduleExtensionUpdateChecks(context: vscode.ExtensionContext): void {
 
     const config = getUpdateCheckConfig();
     if (!config.enabled) {
+        return;
+    }
+
+    // Marketplace installs are kept current by Cursor's own extension
+    // updater — running our GitHub checker too would double the update UX.
+    // The manual "Check for Extension Updates" command still works.
+    if (isMarketplaceInstall(context.extensionPath)) {
+        action('update_checks_skipped_marketplace_install');
         return;
     }
 
