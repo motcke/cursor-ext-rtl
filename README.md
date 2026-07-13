@@ -38,6 +38,7 @@ Smart multi-language RTL support for [Cursor](https://cursor.com) AI Chat, Agent
 - **Automatic extension updates** - new releases download and install themselves in the background with a small progress toast; you only confirm the window reload (manual download links appear if it fails), including detection of an outdated injected loader with an offer to fix it
 - **Diagnostics report** - one command collects patch/loader state, versions, settings and the loader log tail into a shareable Markdown report with a concrete diagnosis and suggested fix
 - **Auto re-apply option** to silently re-apply after Cursor updates
+- **Markdown preview RTL** - the built-in Markdown preview gets per-block direction (paragraphs, headings, lists, table cells) using the same weighted detection, via the official markdown-it plugin API — works even without the main.js patch. Toggle with `cursorRtl.markdownPreview`
 - **Markdown table support** for mixed RTL/LTR table content, including Plan files
 - **Plan editor support** for Cursor's TipTap/ProseMirror-based `.plan.md` editor
 - **Agents Window support** including the agent conversation and side Plan view
@@ -69,6 +70,7 @@ Click the status bar item for a quick-pick menu with available actions.
 | Setting | Default | Description |
 |---------|---------|-------------|
 | `cursorRtl.editorRtl` | `auto` | Code editor (Monaco) direction — the main editing pane, including Markdown and plain-text files. `auto` follows each file's dominant language, `always` forces RTL, `off` leaves the editor untouched. Applies live to open windows |
+| `cursorRtl.markdownPreview` | `true` | Per-block RTL in the built-in Markdown preview (paragraphs, headings, lists, table cells follow their dominant language). Open previews refresh when this changes |
 | `cursorRtl.autoReapply` | `false` | Automatically re-apply RTL patch when Cursor updates overwrite `main.js` |
 | `cursorRtl.showStatusBar` | `true` | Show RTL status indicator in the status bar |
 | `cursorRtl.checkForExtensionUpdates` | `true` | Automatically check GitHub releases for Cursor RTL updates and install them in the background (small progress toast; you only confirm the window reload) |

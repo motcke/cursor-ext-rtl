@@ -126,6 +126,7 @@ function collectData(context: vscode.ExtensionContext): DiagnosticsData {
     const config = vscode.workspace.getConfiguration('cursorRtl');
     const settingNames = [
         'editorRtl',
+        'markdownPreview',
         'autoReapply',
         'showStatusBar',
         'checkForExtensionUpdates',

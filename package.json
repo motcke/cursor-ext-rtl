@@ -2,7 +2,7 @@
   "name": "cursor-rtl",
   "displayName": "Cursor RTL",
   "description": "Smart multi-language RTL support for Cursor AI Chat. Uses a purpose-built algorithm that auto-detects text direction per element - Hebrew, Arabic and Persian text is right-aligned while English stays left-aligned.",
-  "version": "1.2.2",
+  "version": "1.2.3",
   "publisher": "motcke",
   "license": "Apache-2.0",
   "icon": "resources/icon.png",
@@ -31,6 +31,10 @@
     "onStartupFinished"
   ],
   "contributes": {
+    "markdown.markdownItPlugins": true,
+    "markdown.previewStyles": [
+      "./resources/markdown-preview-rtl.css"
+    ],
     "commands": [
       {
         "command": "cursorRtl.enable",
@@ -74,6 +78,11 @@
           ],
           "default": "auto",
           "description": "Right-to-left direction for the code editor — the main editing pane, including Markdown and plain-text files (Monaco). Applies live to open windows; no reload needed."
+        },
+        "cursorRtl.markdownPreview": {
+          "type": "boolean",
+          "default": true,
+          "description": "Right-to-left support in the built-in Markdown preview: every paragraph, heading, list and table cell follows its dominant language. Open previews refresh when this changes."
         },
         "cursorRtl.autoReapply": {
           "type": "boolean",

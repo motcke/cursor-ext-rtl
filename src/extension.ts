@@ -20,6 +20,7 @@ import {
     UpdateCheckResult,
 } from './updateChecker';
 import { runDiagnostics } from './diagnostics';
+import { markdownItCursorRtl, MarkdownItLike } from './markdownItRtl';
 import { init as initActions, action, error as actionError, dispose as disposeActions } from './actions';
 
 let statusBarItem: vscode.StatusBarItem;
@@ -647,7 +648,7 @@ function setupFileWatcher(
     }
 }
 
-export function activate(context: vscode.ExtensionContext): void {
+export function activate(context: vscode.ExtensionContext): { extendMarkdownIt(md: unknown): unknown } {
     const channel = (process.env as Record<string, string | undefined>).CURSOR_CHANNEL
         ?? (process.env as Record<string, string | undefined>).VSCODE_CHANNEL
         ?? '';
@@ -734,12 +735,36 @@ export function activate(context: vscode.ExtensionContext): void {
         if (e.affectsConfiguration('cursorRtl.editorRtl')) {
             writeEditorConfig();
         }
+        if (e.affectsConfiguration('cursorRtl.markdownPreview')) {
+            void vscode.commands.executeCommand('markdown.preview.refresh');
+        }
     }, null, context.subscriptions);
 
     const mainJsState = getPatchState(mainJsPath);
-    action('ext_start', { state: mainJsState, platform: process.platform });
+    action('ext_start', {
+        state: mainJsState,
+        platform: process.platform,
+        installSource: isMarketplaceInstall(context.extensionPath) ? 'marketplace' : 'vsix',
+    });
 
     scheduleExtensionUpdateChecks(context);
+
+    // Consumed by the built-in markdown-language-features extension
+    // (declared via "markdown.markdownItPlugins" in package.json).
+    return {
+        extendMarkdownIt(md: unknown) {
+            const engine = md as MarkdownItLike & {
+                use(plugin: (m: MarkdownItLike) => void): unknown;
+            };
+            return engine.use(
+                markdownItCursorRtl(() =>
+                    vscode.workspace
+                        .getConfiguration('cursorRtl')
+                        .get<boolean>('markdownPreview', true)
+                )
+            );
+        },
+    };
 }
 
 export function deactivate(): Promise<void> {

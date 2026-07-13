@@ -1,0 +1,35 @@
+/* Cursor RTL — built-in Markdown preview adjustments.
+ * The dir attributes themselves are set at render time by the markdown-it
+ * plugin (src/markdownItRtl.ts); this file only fixes physical CSS in the
+ * stock markdown.css that doesn't follow dir. */
+
+/* Stock markdown.css hardcodes text-align: left on th. */
+th {
+	text-align: start;
+}
+
+/* Stock blockquote puts the accent border on the left; mirror it for RTL. */
+blockquote[dir="rtl"] {
+	padding: 0 10px 0 16px;
+	border-left-width: 0;
+	border-right-width: 5px;
+	border-right-style: solid;
+	border-radius: 2px;
+}
+
+/* An RTL-majority table starts from the right edge, like the text around it. */
+table[dir="rtl"] {
+	margin-left: auto;
+}
+
+/* Code stays left-to-right regardless of the surrounding paragraph. */
+pre,
+pre code {
+	direction: ltr;
+	text-align: left;
+}
+
+[dir="rtl"] code {
+	direction: ltr;
+	unicode-bidi: isolate;
+}
