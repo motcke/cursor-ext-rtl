@@ -78,12 +78,21 @@ Click the status bar item for a quick-pick menu with available actions.
 
 ## Installation
 
-1. Download the latest `.vsix` from the [Releases page](https://github.com/motcke/cursor-ext-rtl/releases)
-2. In Cursor, press `Ctrl+Shift+P` to open the Command Palette → search for `VSIX` → select **Extensions: Install from VSIX...** → choose the downloaded file
+1. In Cursor, open the Extensions panel (`Ctrl+Shift+X` / `Cmd+Shift+X`) and search for `@id:motcke.cursor-rtl` — the `@id:` filter matches the extension by its exact identifier, so it comes up as the only result
+2. Click **Install**
 3. Look for **"RTL: OFF"** on the right side of the bottom status bar → click it → select **Enable RTL**
 4. Approve the installation → close and reopen **all** Cursor windows
 
+The extension is published on [Open VSX](https://open-vsx.org/extension/motcke/cursor-rtl), which Cursor's built-in marketplace mirrors, so it installs and updates like any other extension. There's also a direct link that opens the extension page inside Cursor — see the [documentation site](https://motcke.github.io/cursor-ext-rtl/) (GitHub strips the `cursor:` link scheme from README files, so it can't be clickable here).
+
 > **Note:** If Cursor is installed in a system directory (e.g. `C:\Program Files`), you may need to run Cursor as Administrator for the patch to apply.
+
+<details>
+<summary>Manual install from a <code>.vsix</code> file</summary>
+
+Only needed if you can't reach the marketplace. Download the latest `.vsix` from the [Releases page](https://github.com/motcke/cursor-ext-rtl/releases), then open the Command Palette (`Ctrl+Shift+P`), search for `VSIX`, select **Extensions: Install from VSIX...** and choose the downloaded file. Continue from step 3 above.
+
+</details>
 
 ## How It Works
 
