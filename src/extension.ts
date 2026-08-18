@@ -656,6 +656,7 @@ export function activate(context: vscode.ExtensionContext): { extendMarkdownIt(m
         clientVersion: vscode.version,
         extensionVersion: getExtensionVersion(context),
         channel,
+        machineId: vscode.env.machineId,
     });
 
     statusBarItem = vscode.window.createStatusBarItem(

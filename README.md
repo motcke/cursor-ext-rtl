@@ -2,6 +2,12 @@
 
 Smart multi-language RTL support for [Cursor](https://cursor.com) AI Chat, Agents Window and Plan files. Uses a purpose-built algorithm that detects text direction per element - Hebrew, Arabic and Persian text is automatically right-aligned, while English text stays left-aligned. Mixed-language conversations just work.
 
+<a href="https://motcke.github.io/cursor-ext-rtl/open.html">
+  <img src="https://img.shields.io/badge/%E2%AC%87%EF%B8%8F_ONE--CLICK_INSTALL-Open_in_Cursor-2f81f7?style=for-the-badge&labelColor=1a1a1a" alt="One-click install — opens the extension inside Cursor" height="48">
+</a>
+
+**Click the button above to install** — it jumps straight to the extension inside Cursor, ready to install from the built-in marketplace (backed by [Open VSX](https://open-vsx.org/extension/motcke/cursor-rtl)). Once installed, click **RTL: OFF** on the right side of the bottom status bar, select **Enable RTL**, approve, and reopen all Cursor windows. More details in [Installation](#installation).
+
 **[Documentation](https://motcke.github.io/cursor-ext-rtl/)**
 
 ---
@@ -83,7 +89,7 @@ Click the status bar item for a quick-pick menu with available actions.
 3. Look for **"RTL: OFF"** on the right side of the bottom status bar → click it → select **Enable RTL**
 4. Approve the installation → close and reopen **all** Cursor windows
 
-The extension is published on [Open VSX](https://open-vsx.org/extension/motcke/cursor-rtl), which Cursor's built-in marketplace mirrors, so it installs and updates like any other extension. There's also a direct link that opens the extension page inside Cursor — see the [documentation site](https://motcke.github.io/cursor-ext-rtl/) (GitHub strips the `cursor:` link scheme from README files, so it can't be clickable here).
+The extension is published on [Open VSX](https://open-vsx.org/extension/motcke/cursor-rtl), which Cursor's built-in marketplace mirrors, so it installs and updates like any other extension. The **Open in Cursor** button at the top of this page jumps straight to the extension inside Cursor (GitHub strips the `cursor:` link scheme from README files, so the button goes through a small [redirect page](https://motcke.github.io/cursor-ext-rtl/open.html) on the documentation site).
 
 > **Note:** If Cursor is installed in a system directory (e.g. `C:\Program Files`), you may need to run Cursor as Administrator for the patch to apply.
 
