@@ -1,10 +1,16 @@
-(function() {
+// Machine-readable version marker, compared by the extension between its
+// bundled copy and the installed cursor-rtl.js to detect a needed refresh.
+// Keep the exact `var RTL_VERSION = "x.y.z"` form — it is parsed by regex.
+var RTL_VERSION = "1.3.0";
+
+function __cursorRtlMain() {
     var RTL_LOG = "[Cursor RTL]";
     if (typeof window.__cursorRtlScanAll === 'function') {
         window.__cursorRtlScanAll();
         console.log(RTL_LOG, "re-inject: refreshed existing runtime");
         return;
     }
+    console.log(RTL_LOG, "version", RTL_VERSION);
     console.log(RTL_LOG, "rtl.js started at", new Date().toISOString());
 
     function removeExistingCursorRtlStyles() {
@@ -1294,6 +1300,31 @@
         return editorMode;
     };
 
+    // Live config (plan §3.3, option 1): the sandboxed renderer has no fs, but
+    // fetch from vscode-file:// counts as 'self' under the CSP (verified in
+    // the spike). cursor-rtl-config.json sits next to cursor-rtl.js in
+    // out/vs/workbench; resolve it relative to workbench.html's baseURI so
+    // this also works when the script is injected outside a module context.
+    function fetchEditorConfig() {
+        try {
+            var url = new URL('../../../workbench/cursor-rtl-config.json', document.baseURI);
+            /* no-store: vscode-file responses have no Cache-Control in built
+               Cursor, and heuristic freshness would serve stale config. */
+            fetch(url, { cache: 'no-store' })
+                .then(function(res) { return res.ok ? res.json() : null; })
+                .then(function(cfg) {
+                    if (!cfg || typeof cfg.editorRtl !== 'string') return;
+                    var next = normalizeEditorMode(cfg.editorRtl);
+                    if (next !== editorMode) {
+                        window.__cursorRtlSetEditorMode(next);
+                    }
+                })
+                .catch(function() {});
+        } catch (e) {}
+    }
+    fetchEditorConfig();
+    setInterval(fetchEditorConfig, 5000);
+
     // Monaco's cursor controller has no RTL mode: pressing the physical
     // left/right arrow always moves by *logical* character order, which reads
     // backwards once we've flipped a line's visuals to RTL. We swap the two
@@ -1380,4 +1411,8 @@
     }, 3000);
 
     console.log("%c RTL Auto-Detection Active! ", "background: #e91e63; color: #fff; font-size: 14px; padding: 4px; border-radius: 4px;");
-})();
+}
+
+// The preload bootstrap injects this script only after DOMContentLoaded, so
+// the DOM is always parsed by the time it runs.
+__cursorRtlMain();

@@ -1,18 +1,32 @@
 import * as vscode from 'vscode';
+import { spawnSync } from 'child_process';
 import * as fs from 'fs';
+import * as os from 'os';
 import * as path from 'path';
-import { validatePaths, getMainJsPath, getAppOutDir, getConfigPath } from './paths';
+import {
+    validatePaths,
+    getPreloadJsPath,
+    getRtlDir,
+    getProductJsonPath,
+    getConfigPath,
+    getMainJsPath,
+    getRtlScriptDestPath,
+} from './paths';
 import {
     isPatched,
-    hasBackups,
     applyPatch,
     removePatch,
-    copyLoader,
-    getLoaderVersion,
+    updateChecksum,
+    restoreChecksum,
+    copyRtlScript,
+    removeRtlFiles,
+    getRtlScriptVersion,
+    getInstalledBootstrapVersion,
     getDryRunSummary,
     handlePermissionError,
+    isLegacyPatched,
+    removeLegacyPatch,
 } from './patcher';
-import { LOADER_FILENAME } from './constants';
 import {
     checkForExtensionUpdate,
     downloadFile,
@@ -24,29 +38,35 @@ import { markdownItCursorRtl, MarkdownItLike } from './markdownItRtl';
 import { init as initActions, action, error as actionError, dispose as disposeActions } from './actions';
 
 let statusBarItem: vscode.StatusBarItem;
-let fileWatcher: fs.FSWatcher | undefined;
 let blinkInterval: ReturnType<typeof setInterval> | undefined;
 let blinkTimeout: ReturnType<typeof setTimeout> | undefined;
 let startupUpdateCheckTimeout: ReturnType<typeof setTimeout> | undefined;
 let updateCheckInterval: ReturnType<typeof setInterval> | undefined;
 
-type PatchState = 'on' | 'off' | 'update-needed';
+type PatchState = 'on' | 'off';
 type UpdateCheckMode = 'startup' | 'periodic' | 'manual';
 
 const STARTUP_UPDATE_CHECK_DELAY_MS = 5_000;
 const MS_PER_HOUR = 60 * 60 * 1000;
 
-function getPatchState(mainJsPath: string): PatchState {
-    if (!fs.existsSync(mainJsPath)) {
-        return 'off';
+// globalState keys (plan §3.6): the user's explicit off switch replaces the
+// old backups-on-disk heuristic, and the auto-reload guard prevents loops.
+const EVER_ENABLED_KEY = 'everEnabled';
+const DISABLED_BY_USER_KEY = 'rtlDisabledByUser';
+const LAST_AUTO_RELOAD_KEY = 'lastAutoReload';
+const AUTO_RELOAD_GUARD_MS = 10 * 60 * 1000;
+
+function getPatchState(): PatchState {
+    return isPatched(getPreloadJsPath()) ? 'on' : 'off';
+}
+
+function getProductVersion(): string {
+    try {
+        const product = JSON.parse(fs.readFileSync(getProductJsonPath(), 'utf-8'));
+        return typeof product.version === 'string' ? product.version : 'unknown';
+    } catch {
+        return 'unknown';
     }
-    if (isPatched(mainJsPath)) {
-        return 'on';
-    }
-    if (hasBackups(mainJsPath)) {
-        return 'update-needed';
-    }
-    return 'off';
 }
 
 function startBlink(themeColorId: string): void {
@@ -95,31 +115,19 @@ function updateStatusBar(state: PatchState): void {
             statusBarItem.tooltip = 'RTL patch is not applied. Click for options.';
             startBlink('statusBarItem.errorBackground');
             break;
-        case 'update-needed':
-            statusBarItem.text = '$(warning) RTL: UPDATE NEEDED';
-            statusBarItem.tooltip =
-                'Cursor was updated and the RTL patch needs to be re-applied. Click for options.';
-            startBlink('statusBarItem.warningBackground');
-            break;
     }
 
     statusBarItem.show();
 }
 
 async function showQuickPick(): Promise<void> {
-    const mainJsPath = getMainJsPath();
-    const state = getPatchState(mainJsPath);
+    const state = getPatchState();
 
     const items: vscode.QuickPickItem[] = [];
 
     if (state === 'on') {
         items.push(
-            { label: '$(circle-slash) Disable RTL', description: 'Remove patch and restore original main.js' },
-            { label: '$(info) Check Status', description: 'Show current RTL patch status' }
-        );
-    } else if (state === 'update-needed') {
-        items.push(
-            { label: '$(refresh) Fix RTL After Cursor Update', description: 'Re-apply the patch that the Cursor update removed' },
+            { label: '$(circle-slash) Disable RTL', description: 'Remove patch and restore original preload.js' },
             { label: '$(info) Check Status', description: 'Show current RTL patch status' }
         );
     } else {
@@ -147,7 +155,7 @@ async function showQuickPick(): Promise<void> {
         return;
     }
 
-    if (picked.label.includes('Enable') || picked.label.includes('Fix RTL')) {
+    if (picked.label.includes('Enable')) {
         await vscode.commands.executeCommand('cursorRtl.enable');
     } else if (picked.label.includes('Disable')) {
         await vscode.commands.executeCommand('cursorRtl.disable');
@@ -169,8 +177,9 @@ function getEditorRtlMode(): EditorRtlMode {
     return value === 'always' || value === 'off' ? value : 'auto';
 }
 
-// Persist the editor-RTL mode where the injected loader can read it. The
-// loader watches this file and pushes changes live into open windows.
+// Persist the editor-RTL mode where the injected renderer script can fetch
+// it (out/vs/workbench/cursor-rtl-config.json). rtl.js polls this file, so
+// changes apply live without a reload.
 function writeEditorConfig(): void {
     try {
         fs.writeFileSync(
@@ -178,7 +187,7 @@ function writeEditorConfig(): void {
             JSON.stringify({ editorRtl: getEditorRtlMode() })
         );
     } catch {
-        // Non-critical: the loader defaults to 'auto' when the file is absent.
+        // Non-critical: rtl.js defaults to 'auto' when the file is absent.
     }
 }
 
@@ -208,11 +217,90 @@ async function setEditorRtlCommand(): Promise<void> {
     action('editor_rtl_set', { mode: picked.mode });
 }
 
+async function offerReload(message: string): Promise<void> {
+    const reload = await vscode.window.showInformationMessage(
+        message,
+        'Reload Window',
+        'Later'
+    );
+    if (reload === 'Reload Window') {
+        await vscode.commands.executeCommand('workbench.action.reloadWindow');
+    }
+}
+
+interface LastAutoReload {
+    cursorVersion: string;
+    time: number;
+}
+
+// Auto-reload guard (plan §3.6): never reload automatically twice for the
+// same Cursor version within 10 minutes, so a patch that fails to stick can't
+// put the window in a reload loop.
+function autoReloadAllowed(context: vscode.ExtensionContext, cursorVersion: string): boolean {
+    const last = context.globalState.get<LastAutoReload>(LAST_AUTO_RELOAD_KEY);
+    if (!last || last.cursorVersion !== cursorVersion) {
+        return true;
+    }
+    return Date.now() - last.time > AUTO_RELOAD_GUARD_MS;
+}
+
+// Applies the full patch set (rtl.js + config + workbench.js + checksum) and
+// reloads the window so it takes effect. Shared by first enable, re-enable
+// and the automatic after-Cursor-update path.
+async function applyFullPatch(
+    context: vscode.ExtensionContext,
+    { firstTime, auto }: { firstTime: boolean; auto: boolean }
+): Promise<void> {
+    const preloadJsPath = getPreloadJsPath();
+    const productVersion = getProductVersion();
+    const rtlVersion = getBundledRtlVersion(context) ?? '0.0.0';
+
+    copyRtlScript(getRtlDir(), context.extensionPath);
+    writeEditorConfig();
+    applyPatch(preloadJsPath, productVersion, rtlVersion);
+
+    try {
+        updateChecksum(getProductJsonPath(), preloadJsPath);
+    } catch (err) {
+        actionError(err, { op: 'checksum_update' });
+        vscode.window.showWarningMessage(
+            'Cursor RTL: The patch was applied, but the integrity checksum could not be updated. ' +
+            'Cursor may show an "installation appears to be corrupt" warning — it is safe to ' +
+            'ignore (choose "Don\'t show again").'
+        );
+    }
+
+    action(firstTime ? 'patch_apply' : auto ? 'patch_auto_reapply' : 'patch_reapply');
+    await context.globalState.update(EVER_ENABLED_KEY, true);
+    await context.globalState.update(DISABLED_BY_USER_KEY, undefined);
+    updateStatusBar('on');
+
+    const config = vscode.workspace.getConfiguration('cursorRtl');
+    const autoReload = config.get<boolean>('autoReloadAfterPatch', true);
+
+    if (autoReload && autoReloadAllowed(context, productVersion)) {
+        await context.globalState.update(LAST_AUTO_RELOAD_KEY, {
+            cursorVersion: productVersion,
+            time: Date.now(),
+        } satisfies LastAutoReload);
+        if (auto) {
+            // Give the toast a moment to render so the reload isn't a mystery.
+            vscode.window.showInformationMessage('Cursor RTL: re-applied after a Cursor update — reloading window.');
+            await new Promise((resolve) => setTimeout(resolve, 1_500));
+        }
+        await vscode.commands.executeCommand('workbench.action.reloadWindow');
+    } else {
+        await offerReload(
+            firstTime
+                ? 'RTL patch applied. Reload the window to activate it.'
+                : 'RTL patch re-applied. Reload the window to activate it.'
+        );
+    }
+}
+
 // Single apply entry point for both "enable" and "fix after a Cursor
-// update" — the underlying operation is identical (copy loader + apply
-// patch, both idempotent). Only a first-ever enable asks for consent with a
-// dry-run preview; once the user has enabled before (backups exist or the
-// patch is present), it runs straight away.
+// update" — the underlying operation is identical and idempotent. Only a
+// first-ever enable asks for consent with a dry-run preview.
 async function enableCommand(context: vscode.ExtensionContext): Promise<void> {
     const validation = validatePaths();
     if (!validation.valid) {
@@ -220,12 +308,11 @@ async function enableCommand(context: vscode.ExtensionContext): Promise<void> {
         return;
     }
 
-    const mainJsPath = validation.mainJsPath;
-    const outDir = getAppOutDir();
-    const firstTime = !isPatched(mainJsPath) && !hasBackups(mainJsPath);
+    const firstTime = !context.globalState.get<boolean>(EVER_ENABLED_KEY) &&
+        !isPatched(validation.preloadJsPath);
 
     if (firstTime) {
-        const dryRun = getDryRunSummary(mainJsPath);
+        const dryRun = getDryRunSummary(validation.preloadJsPath, getRtlDir());
         const detail = dryRun.map((a) => `• ${a}`).join('\n');
 
         const confirm = await vscode.window.showWarningMessage(
@@ -240,40 +327,22 @@ async function enableCommand(context: vscode.ExtensionContext): Promise<void> {
     }
 
     try {
-        copyLoader(outDir, context.extensionPath);
-        applyPatch(mainJsPath);
-        action(firstTime ? 'patch_apply' : 'patch_reapply');
-        updateStatusBar('on');
-        setupFileWatcher(mainJsPath, context);
-
-        const restart = await vscode.window.showInformationMessage(
-            firstTime
-                ? 'RTL patch applied successfully! Please close and reopen all Cursor windows to activate.'
-                : 'RTL patch re-applied successfully! Please close and reopen all Cursor windows to activate.',
-            'Quit Cursor',
-            'Later'
-        );
-
-        if (restart === 'Quit Cursor') {
-            await vscode.commands.executeCommand('workbench.action.quit');
-        }
+        await applyFullPatch(context, { firstTime, auto: false });
     } catch (err) {
         actionError(err, { op: firstTime ? 'patch_apply' : 'patch_reapply' });
         vscode.window.showErrorMessage(`Cursor RTL: ${handlePermissionError(err)}`);
     }
 }
 
-async function disableCommand(): Promise<void> {
+async function disableCommand(context: vscode.ExtensionContext): Promise<void> {
     const validation = validatePaths();
     if (!validation.valid) {
         vscode.window.showErrorMessage(`Cursor RTL: ${validation.error}`);
         return;
     }
 
-    const mainJsPath = validation.mainJsPath;
-
     const confirm = await vscode.window.showWarningMessage(
-        'Disable RTL support?\n\nThis will restore the original main.js from backup.',
+        'Disable RTL support?\n\nThis will restore the original preload.js and product.json.',
         { modal: true },
         'Disable'
     );
@@ -283,19 +352,19 @@ async function disableCommand(): Promise<void> {
     }
 
     try {
-        removePatch(mainJsPath);
+        const preloadJsPath = validation.preloadJsPath;
+        removePatch(preloadJsPath, getProductVersion());
+        try {
+            restoreChecksum(getProductJsonPath(), preloadJsPath);
+        } catch {
+            // Non-critical: the checksum matching a clean file is only cosmetic.
+        }
+        removeRtlFiles(getRtlDir());
+        await context.globalState.update(DISABLED_BY_USER_KEY, true);
         action('patch_remove');
         updateStatusBar('off');
 
-        const restart = await vscode.window.showInformationMessage(
-            'RTL patch removed. Please close and reopen all Cursor windows to apply changes.',
-            'Quit Cursor',
-            'Later'
-        );
-
-        if (restart === 'Quit Cursor') {
-            await vscode.commands.executeCommand('workbench.action.quit');
-        }
+        await offerReload('RTL patch removed. Reload the window to apply.');
     } catch (err) {
         actionError(err, { op: 'patch_remove' });
         vscode.window.showErrorMessage(`Cursor RTL: ${handlePermissionError(err)}`);
@@ -309,30 +378,17 @@ async function statusCommand(): Promise<void> {
         return;
     }
 
-    const state = getPatchState(validation.mainJsPath);
+    const state = getPatchState();
     action('status_check', { state });
 
-    switch (state) {
-        case 'on':
-            vscode.window.showInformationMessage(
-                'Cursor RTL: Patch is ACTIVE. RTL support is enabled.'
-            );
-            break;
-        case 'off':
-            vscode.window.showInformationMessage(
-                'Cursor RTL: Patch is NOT applied. Use "Cursor RTL: Enable" to activate.'
-            );
-            break;
-        case 'update-needed': {
-            const choice = await vscode.window.showWarningMessage(
-                'Cursor RTL: Cursor was updated and the patch needs to be re-applied.',
-                'Fix Now'
-            );
-            if (choice === 'Fix Now') {
-                await vscode.commands.executeCommand('cursorRtl.enable');
-            }
-            break;
-        }
+    if (state === 'on') {
+        vscode.window.showInformationMessage(
+            'Cursor RTL: Patch is ACTIVE. RTL support is enabled.'
+        );
+    } else {
+        vscode.window.showInformationMessage(
+            'Cursor RTL: Patch is NOT applied. Use "Cursor RTL: Enable" to activate.'
+        );
     }
 }
 
@@ -397,17 +453,6 @@ async function handleUpdateAvailable(
     }
 
     await autoInstallExtensionUpdate(context, result, mode);
-}
-
-async function offerReload(message: string): Promise<void> {
-    const reload = await vscode.window.showInformationMessage(
-        message,
-        'Reload Window',
-        'Later'
-    );
-    if (reload === 'Reload Window') {
-        await vscode.commands.executeCommand('workbench.action.reloadWindow');
-    }
 }
 
 // Downloads the release VSIX and installs it in the background. On any
@@ -567,84 +612,180 @@ function scheduleExtensionUpdateChecks(context: vscode.ExtensionContext): void {
     }, config.intervalMs);
 }
 
-function refreshLoader(context: vscode.ExtensionContext): void {
+// 1.2.x migration (plan §3.8): undo the old main-process patch. Failures are
+// swallowed — the leftover is harmless (rtl.js's re-injection guard) and the
+// next Cursor update erases the patched main.js anyway.
+function runLegacyMigration(): void {
     try {
-        const outDir = getAppOutDir();
-        copyLoader(outDir, context.extensionPath);
+        const mainJsPath = getMainJsPath();
+        if (fs.existsSync(mainJsPath) && isLegacyPatched(mainJsPath)) {
+            removeLegacyPatch(mainJsPath);
+            action('legacy_migrated');
+        }
     } catch {
-        // Non-critical — loader is self-discovering, works even if outdated
+        // best-effort
     }
 }
 
-// After refreshLoader has tried to silently update the installed loader, a
-// remaining version gap means the copy failed (usually permissions on the
-// Cursor app directory) or the loader file is gone — offer a proper Re-apply,
-// which surfaces permission errors with guidance.
-function checkLoaderVersionGap(context: vscode.ExtensionContext): void {
-    const bundled = getLoaderVersion(
-        path.join(context.extensionPath, 'resources', LOADER_FILENAME)
+function getBundledRtlVersion(context: vscode.ExtensionContext): string | null {
+    return getRtlScriptVersion(
+        path.join(context.extensionPath, 'resources', 'rtl.js')
     );
-    if (!bundled) {
-        return;
-    }
-
-    const installed = getLoaderVersion(path.join(getAppOutDir(), LOADER_FILENAME));
-    if (installed === bundled) {
-        return;
-    }
-
-    action('loader_gap', { bundled, installed: installed ?? 'missing-or-pre-1.3.0' });
-    void vscode.window
-        .showWarningMessage(
-            `Cursor RTL: The loader installed in Cursor is outdated ` +
-            `(installed: ${installed ?? 'unknown'}, expected: ${bundled}). ` +
-            `Re-apply the RTL patch to update it.`,
-            'Fix Now',
-            'Later'
-        )
-        .then(async (choice) => {
-            if (choice === 'Fix Now') {
-                await vscode.commands.executeCommand('cursorRtl.enable');
-            }
-        });
 }
 
-function setupFileWatcher(
-    mainJsPath: string,
-    context: vscode.ExtensionContext
+interface RefreshWarned {
+    version: string;
+    appPid: number;
+}
+
+const REFRESH_WARNED_KEY = 'refreshWarned';
+
+// A failed script refresh (typically: Cursor installed under Program Files
+// and no write permission) is worth one warning per Cursor launch, not one
+// per window or per reload. process.ppid is the Cursor main process — stable
+// across window reloads and shared by all windows of a run, different on the
+// next launch — so (version, ppid) in globalState dedups exactly to that.
+function warnRefreshFailed(
+    context: vscode.ExtensionContext,
+    bundled: string,
+    err: unknown
 ): void {
-    if (fileWatcher) {
-        fileWatcher.close();
+    const prev = context.globalState.get<RefreshWarned>(REFRESH_WARNED_KEY);
+    if (prev && prev.version === bundled && prev.appPid === process.ppid) {
+        return;
+    }
+    void context.globalState.update(REFRESH_WARNED_KEY, {
+        version: bundled,
+        appPid: process.ppid,
+    } satisfies RefreshWarned);
+    vscode.window.showWarningMessage(
+        `Cursor RTL: Updating the injected RTL script to ${bundled} failed. ` +
+        `${handlePermissionError(err)} ` +
+        'RTL keeps working with the previously installed version.'
+    );
+}
+
+// When the patch is already on, keep the installed cursor-rtl.js current with
+// the copy bundled in this extension version (plan §3.6). The bootstrap block
+// in preload.js is rewritten too, so its ?v= cache-buster makes the next
+// reload fetch the new script. The reload is offered, never automatic.
+function refreshRtlScript(context: vscode.ExtensionContext): void {
+    let bundled: string | null = null;
+    try {
+        bundled = getBundledRtlVersion(context);
+        if (!bundled) {
+            return;
+        }
+        const installedScript = getRtlScriptVersion(getRtlScriptDestPath());
+        const installedBootstrap = getInstalledBootstrapVersion(getPreloadJsPath());
+        if (installedScript === bundled && installedBootstrap === bundled) {
+            void context.globalState.update(REFRESH_WARNED_KEY, undefined);
+            return;
+        }
+        copyRtlScript(getRtlDir(), context.extensionPath);
+        const preloadJsPath = getPreloadJsPath();
+        applyPatch(preloadJsPath, getProductVersion(), bundled);
+        try {
+            updateChecksum(getProductJsonPath(), preloadJsPath);
+        } catch {
+            // cosmetic — surfaced by diagnostics
+        }
+        void context.globalState.update(REFRESH_WARNED_KEY, undefined);
+        action('rtl_script_refreshed', { from: installedScript ?? 'missing', to: bundled });
+        void offerReload(
+            `Cursor RTL: The RTL script was updated to ${bundled}. Reload the window to apply it.`
+        );
+    } catch (err) {
+        // The installed script keeps working until the new one can be
+        // written (e.g. after a permissions fix) — but say so, once per
+        // Cursor launch.
+        actionError(err, { op: 'rtl_refresh' });
+        if (bundled) {
+            warnRefreshFailed(context, bundled, err);
+        }
+    }
+}
+
+// Startup flow (plan §3.6).
+async function runStartupFlow(context: vscode.ExtensionContext): Promise<void> {
+    runLegacyMigration();
+
+    const validation = validatePaths();
+    if (!validation.valid) {
+        updateStatusBar('off');
+        return;
     }
 
-    try {
-        fileWatcher = fs.watch(mainJsPath, (eventType) => {
-            if (eventType === 'change') {
-                setTimeout(async () => {
-                    const state = getPatchState(mainJsPath);
-                    if (state === 'update-needed' || state === 'off') {
-                        action('update_detect');
-                        updateStatusBar('update-needed');
+    if (isPatched(validation.preloadJsPath)) {
+        refreshRtlScript(context);
+        writeEditorConfig();
+        updateStatusBar('on');
+        return;
+    }
 
-                        const config = vscode.workspace.getConfiguration('cursorRtl');
-                        if (config.get<boolean>('autoReapply', false)) {
-                            await enableCommand(context);
-                        } else {
-                            const choice = await vscode.window.showWarningMessage(
-                                'Cursor was updated and the RTL patch was removed. Fix now?',
-                                'Fix Now',
-                                'Dismiss'
-                            );
-                            if (choice === 'Fix Now') {
-                                await vscode.commands.executeCommand('cursorRtl.enable');
-                            }
-                        }
-                    }
-                }, 1000);
-            }
-        });
+    if (context.globalState.get<boolean>(DISABLED_BY_USER_KEY)) {
+        updateStatusBar('off');
+        return;
+    }
+
+    if (!context.globalState.get<boolean>(EVER_ENABLED_KEY)) {
+        // First install: ask for consent, like the Enable command.
+        updateStatusBar('off');
+        await enableCommand(context);
+        if (getPatchState() === 'off') {
+            // User declined — remember, so the dialog doesn't reappear on
+            // every window. Enable clears this.
+            await context.globalState.update(DISABLED_BY_USER_KEY, true);
+        }
+        return;
+    }
+
+    // A Cursor update wiped out/: re-apply and reload automatically.
+    try {
+        await applyFullPatch(context, { firstTime: false, auto: true });
+    } catch (err) {
+        actionError(err, { op: 'patch_auto_reapply' });
+        updateStatusBar('off');
+        const choice = await vscode.window.showWarningMessage(
+            `Cursor RTL: Re-applying the patch after a Cursor update failed. ${handlePermissionError(err)}`,
+            'Retry'
+        );
+        if (choice === 'Retry') {
+            await enableCommand(context);
+        }
+    }
+}
+
+// 'user' when Cursor is installed under the user's profile (e.g.
+// %LOCALAPPDATA%\Programs\cursor), 'machine' otherwise (e.g. Program Files,
+// /Applications) — the machine-wide case is where patching hits permission
+// walls.
+function getInstallScope(): string {
+    try {
+        let appRoot = path.resolve(vscode.env.appRoot);
+        let home = path.resolve(os.homedir());
+        if (process.platform === 'win32') {
+            appRoot = appRoot.toLowerCase();
+            home = home.toLowerCase();
+        }
+        return appRoot.startsWith(home + path.sep) ? 'user' : 'machine';
     } catch {
-        // fs.watch may fail on some platforms/configurations -- non-critical
+        return 'unknown';
+    }
+}
+
+// The extension host inherits the IDE process's elevation. On Windows,
+// fltmc.exe exits 0 only when elevated; on POSIX, uid 0 means root.
+function getElevation(): string {
+    try {
+        if (process.platform === 'win32') {
+            const r = spawnSync('fltmc.exe', [], { windowsHide: true, timeout: 3000 });
+            if (r.error) return 'unknown';
+            return r.status === 0 ? 'admin' : 'user';
+        }
+        return process.getuid?.() === 0 ? 'admin' : 'user';
+    } catch {
+        return 'unknown';
     }
 }
 
@@ -657,6 +798,10 @@ export function activate(context: vscode.ExtensionContext): { extendMarkdownIt(m
         extensionVersion: getExtensionVersion(context),
         channel,
         machineId: vscode.env.machineId,
+        installScope: getInstallScope(),
+        appName: vscode.env.appName,
+        appRoot: vscode.env.appRoot,
+        elevation: getElevation(),
     });
 
     statusBarItem = vscode.window.createStatusBarItem(
@@ -678,7 +823,7 @@ export function activate(context: vscode.ExtensionContext): { extendMarkdownIt(m
 
     context.subscriptions.push(
         vscode.commands.registerCommand('cursorRtl.disable', () =>
-            disableCommand()
+            disableCommand(context)
         )
     );
 
@@ -706,26 +851,9 @@ export function activate(context: vscode.ExtensionContext): { extendMarkdownIt(m
         )
     );
 
-    writeEditorConfig();
-
-    const mainJsPath = getMainJsPath();
-    const state = getPatchState(mainJsPath);
-
-    updateStatusBar(state);
-
-    if (state === 'on') {
-        refreshLoader(context);
-        checkLoaderVersionGap(context);
-    }
-
-    if (fs.existsSync(mainJsPath) && (state === 'on' || state === 'update-needed')) {
-        setupFileWatcher(mainJsPath, context);
-    }
-
     vscode.workspace.onDidChangeConfiguration((e) => {
         if (e.affectsConfiguration('cursorRtl.showStatusBar')) {
-            const currentState = getPatchState(mainJsPath);
-            updateStatusBar(currentState);
+            updateStatusBar(getPatchState());
         }
         if (
             e.affectsConfiguration('cursorRtl.checkForExtensionUpdates') ||
@@ -741,12 +869,13 @@ export function activate(context: vscode.ExtensionContext): { extendMarkdownIt(m
         }
     }, null, context.subscriptions);
 
-    const mainJsState = getPatchState(mainJsPath);
     action('ext_start', {
-        state: mainJsState,
+        state: getPatchState(),
         platform: process.platform,
         installSource: isMarketplaceInstall(context.extensionPath) ? 'marketplace' : 'vsix',
     });
+
+    void runStartupFlow(context);
 
     scheduleExtensionUpdateChecks(context);
 
@@ -777,10 +906,6 @@ export function deactivate(): Promise<void> {
     if (blinkTimeout) {
         clearTimeout(blinkTimeout);
         blinkTimeout = undefined;
-    }
-    if (fileWatcher) {
-        fileWatcher.close();
-        fileWatcher = undefined;
     }
     clearScheduledUpdateChecks();
     return disposeActions().catch(() => {});

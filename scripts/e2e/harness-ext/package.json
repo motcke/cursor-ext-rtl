@@ -1,0 +1,14 @@
+{
+    "name": "cursor-rtl-e2e-harness",
+    "publisher": "lab",
+    "version": "0.0.1",
+    "private": true,
+    "description": "e2e-only command bridge: executes VS Code commands requested via C:\\cursor-rtl-lab\\e2e-cmd.json. Never packaged.",
+    "engines": {
+        "vscode": "^1.85.0"
+    },
+    "main": "./extension.js",
+    "activationEvents": [
+        "onStartupFinished"
+    ]
+}

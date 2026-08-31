@@ -3,9 +3,12 @@ dist/
 *.vsix
 visual/actual/
 visual/diff/
+visual/e2e-results.json
 
 # Accidental Yarn PnP artifacts (project uses npm)
 .pnp.cjs
 .pnp.loader.mjs
 .yarn/
 yarn.lock
+.markup/
+visual/baseline/

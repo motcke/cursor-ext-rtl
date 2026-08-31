@@ -6,7 +6,7 @@ Smart multi-language RTL support for [Cursor](https://cursor.com) AI Chat, Agent
   <img src="https://img.shields.io/badge/%E2%AC%87%EF%B8%8F_ONE--CLICK_INSTALL-Open_in_Cursor-2f81f7?style=for-the-badge&labelColor=1a1a1a" alt="One-click install — opens the extension inside Cursor" height="48">
 </a>
 
-**Click the button above to install** — it jumps straight to the extension inside Cursor, ready to install from the built-in marketplace (backed by [Open VSX](https://open-vsx.org/extension/motcke/cursor-rtl)). Once installed, click **RTL: OFF** on the right side of the bottom status bar, select **Enable RTL**, approve, and reopen all Cursor windows. More details in [Installation](#installation).
+**Click the button above to install** — it jumps straight to the extension inside Cursor, ready to install from the built-in marketplace (backed by [Open VSX](https://open-vsx.org/extension/motcke/cursor-rtl)). Once installed, click **RTL: OFF** on the right side of the bottom status bar, select **Enable RTL** and approve. The window reloads itself and RTL is on. More details in [Installation](#installation).
 
 **[Documentation](https://motcke.github.io/cursor-ext-rtl/)**
 
@@ -39,12 +39,11 @@ Smart multi-language RTL support for [Cursor](https://cursor.com) AI Chat, Agent
 - **Smart multi-language algorithm** - detects text direction per element using weighted RTL/LTR scoring, so Hebrew, Arabic and Persian content is right-aligned while English-heavy content stays left-aligned
 - **Code editor (Monaco) RTL** - the same per-file detection extends to the main editing pane (including Markdown and plain-text files): RTL-dominant files flow right-to-left (with the vertical scrollbar moved to the left and left/right arrow keys swapped to match), while English and code files stay untouched. Choose `auto` / `always` / `off` via setting or quick-pick
 - **One-click Enable/Disable** via Command Palette
-- **Status Bar indicator** showing current RTL patch state (ON / OFF / UPDATE NEEDED)
-- **Automatic update detection** when Cursor updates overwrite `main.js`
-- **Automatic extension updates** - new releases download and install themselves in the background with a small progress toast; you only confirm the window reload (manual download links appear if it fails), including detection of an outdated injected loader with an offer to fix it
-- **Diagnostics report** - one command collects patch/loader state, versions, settings and the loader log tail into a shareable Markdown report with a concrete diagnosis and suggested fix
-- **Auto re-apply option** to silently re-apply after Cursor updates
-- **Markdown preview RTL** - the built-in Markdown preview gets per-block direction (paragraphs, headings, lists, table cells) using the same weighted detection, via the official markdown-it plugin API — works even without the main.js patch. Toggle with `cursorRtl.markdownPreview`
+- **Status Bar indicator** showing current RTL patch state (ON / OFF)
+- **Survives Cursor updates on its own** - when an update overwrites Cursor's files, the extension re-applies the patch on the next startup and reloads the window by itself (set `cursorRtl.autoReloadAfterPatch` to `false` to get a Reload prompt instead)
+- **Automatic extension updates** - new releases download and install themselves in the background with a small progress toast; you only confirm the window reload (manual download links appear if it fails)
+- **Diagnostics report** - one command collects patch state, integrity-checksum match, versions and settings into a shareable Markdown report with a concrete diagnosis and suggested fix
+- **Markdown preview RTL** - the built-in Markdown preview gets per-block direction (paragraphs, headings, lists, table cells) using the same weighted detection, via the official markdown-it plugin API — works even without the patch. Toggle with `cursorRtl.markdownPreview`
 - **Markdown table support** for mixed RTL/LTR table content, including Plan files
 - **Plan editor support** for Cursor's TipTap/ProseMirror-based `.plan.md` editor
 - **Agents Window support** including the agent conversation and side Plan view
@@ -56,18 +55,17 @@ Smart multi-language RTL support for [Cursor](https://cursor.com) AI Chat, Agent
 
 | Command | Description |
 |---------|-------------|
-| `Cursor RTL: Enable RTL / Fix After Update` | Backup `main.js`, apply the RTL patch, copy the loader script. The same command also re-applies the patch after a Cursor update removed it (no confirmation needed the second time) |
-| `Cursor RTL: Disable RTL Support` | Restore `main.js` from backup, remove the loader script |
+| `Cursor RTL: Enable RTL / Fix After Update` | Backup `preload.js`, apply the RTL patch and update the integrity checksum. Re-applying after a Cursor update normally happens automatically on startup; the command stays as a manual fallback |
+| `Cursor RTL: Disable RTL Support` | Restore the original `preload.js` and `product.json` from backup, delete the injected RTL files |
 | `Cursor RTL: Check Status` | Show whether the RTL patch is currently active |
 | `Cursor RTL: Check for Extension Updates` | Check GitHub releases now and install any newer version in the background |
 | `Cursor RTL: Code Editor Direction (Auto / Always / Off)` | Choose how the code editor (Monaco) — including Markdown/plain-text — picks its direction |
-| `Cursor RTL: Diagnostics` | Generate a full diagnostics report (patch/loader state, versions, log tail) with a suggested fix |
+| `Cursor RTL: Diagnostics` | Generate a full diagnostics report (patch state, checksum match, versions) with a suggested fix |
 
 ## Status Bar
 
 - **RTL: ON** - Patch is active
 - **RTL: OFF** - Patch is not applied
-- **RTL: UPDATE NEEDED** - Cursor was updated, patch needs re-applying
 
 Click the status bar item for a quick-pick menu with available actions.
 
@@ -77,7 +75,7 @@ Click the status bar item for a quick-pick menu with available actions.
 |---------|---------|-------------|
 | `cursorRtl.editorRtl` | `auto` | Code editor (Monaco) direction — the main editing pane, including Markdown and plain-text files. `auto` follows each file's dominant language, `always` forces RTL, `off` leaves the editor untouched. Applies live to open windows |
 | `cursorRtl.markdownPreview` | `true` | Per-block RTL in the built-in Markdown preview (paragraphs, headings, lists, table cells follow their dominant language). Open previews refresh when this changes |
-| `cursorRtl.autoReapply` | `false` | Automatically re-apply RTL patch when Cursor updates overwrite `main.js` |
+| `cursorRtl.autoReloadAfterPatch` | `true` | After the patch is re-applied (e.g. following a Cursor update), reload the window automatically. When off, you get a Reload prompt instead |
 | `cursorRtl.showStatusBar` | `true` | Show RTL status indicator in the status bar |
 | `cursorRtl.checkForExtensionUpdates` | `true` | Automatically check GitHub releases for Cursor RTL updates and install them in the background (small progress toast; you only confirm the window reload) |
 | `cursorRtl.updateCheckIntervalHours` | `6` | How often to check for extension updates while Cursor is open |
@@ -87,7 +85,7 @@ Click the status bar item for a quick-pick menu with available actions.
 1. In Cursor, open the Extensions panel (`Ctrl+Shift+X` / `Cmd+Shift+X`) and search for `@id:motcke.cursor-rtl` — the `@id:` filter matches the extension by its exact identifier, so it comes up as the only result
 2. Click **Install**
 3. Look for **"RTL: OFF"** on the right side of the bottom status bar → click it → select **Enable RTL**
-4. Approve the installation → close and reopen **all** Cursor windows
+4. Approve → the window reloads itself and RTL is active. Other open windows pick it up when they reload. (An "installation appears to be corrupt" notice may show up in this session; it's expected. Click **Don't Show Again** and it never comes back.)
 
 The extension is published on [Open VSX](https://open-vsx.org/extension/motcke/cursor-rtl), which Cursor's built-in marketplace mirrors, so it installs and updates like any other extension. The **Open in Cursor** button at the top of this page jumps straight to the extension inside Cursor (GitHub strips the `cursor:` link scheme from README files, so the button goes through a small [redirect page](https://motcke.github.io/cursor-ext-rtl/open.html) on the documentation site).
 
@@ -104,16 +102,16 @@ Only needed if you can't reach the marketplace. Download the latest `.vsix` from
 
 ### What gets modified
 
-This extension modifies two files inside Cursor's app directory:
+The extension touches four files inside Cursor's app directory:
 
-1. **`main.js`** - A single line is inserted after the copyright comment to load the RTL script
-2. **`cursor-rtl-loader.cjs`** - A small loader is copied alongside `main.js`; it injects the extension's bundled `resources/rtl.js` into Cursor workbench windows
-
-The `rtl.js` styling and direction script stays in the installed extension directory, so it updates with the extension package.
+1. **`out/vs/base/parts/sandbox/electron-sandbox/preload.js`** - a small bootstrap block is appended at the end. Cursor's main process reads this file from disk for every window and on every reload, which is what lets a freshly applied patch activate with a plain window reload instead of a full restart
+2. **`out/vs/workbench/cursor-rtl.js`** - a copy of the extension's `resources/rtl.js`, the actual styling and direction script
+3. **`out/vs/workbench/cursor-rtl-config.json`** - runtime settings (currently the editor direction mode) that the script polls
+4. **`product.json`** - the `preload.js` entry in Cursor's integrity checksums is rewritten so Cursor doesn't flag the install as corrupt (one changed line; the original is backed up)
 
 ### Runtime behavior
 
-The loader runs in Cursor's Electron main process. It watches existing and newly-created browser windows, waits until a window has loaded `workbench.html`, and then injects `rtl.js` once for that workbench URL.
+The bootstrap runs in the preload's isolated world and injects a `<script src="cursor-rtl.js?v=...">` tag into the page, so `rtl.js` itself runs in the window's main world in every window - regular, new and the Agents window alike. The version query makes each extension update load fresh instead of hitting Chromium's cache.
 
 Inside the workbench, `rtl.js` does an initial scan at startup, a few delayed startup scans while Cursor finishes rendering, and then re-scans on relevant DOM mutations, focus changes, and visibility changes. It is not a continuous polling loop.
 
@@ -121,14 +119,15 @@ The direction algorithm assigns an explicit `dir="rtl"` or `dir="ltr"` to matchi
 
 Plan files and the Agents Window side Plan view use Cursor's TipTap/ProseMirror rich-text editor. Because that editor owns and may rewrite its DOM, Plan content also gets generated CSS rules scoped to the active Plan editor instead of relying only on direct `dir` attributes.
 
-For the code editor (Monaco) — the main editing pane, including Markdown and plain-text files — the same scorer samples each editor's visible lines and, when RTL-dominant (or when `cursorRtl.editorRtl` is `always`), marks it with a `data-cursor-rtl-dir="rtl"` attribute. Scoped CSS then flips the view lines to RTL, moves the vertical scrollbar to the left, and reorders Monaco's per-token spans so leading list markers and punctuation land on the right. Because Monaco's cursor controller has no RTL mode, a small keydown handler swaps the left/right arrows (keeping Shift/Alt/Ctrl/Meta) only while a marked-RTL editor is focused. The chosen mode is written to `~/.cursor-rtl-config.json`, which the loader watches so changes apply live without a reload.
+For the code editor (Monaco) — the main editing pane, including Markdown and plain-text files — the same scorer samples each editor's visible lines and, when RTL-dominant (or when `cursorRtl.editorRtl` is `always`), marks it with a `data-cursor-rtl-dir="rtl"` attribute. Scoped CSS then flips the view lines to RTL, moves the vertical scrollbar to the left, and reorders Monaco's per-token spans so leading list markers and punctuation land on the right. Because Monaco's cursor controller has no RTL mode, a small keydown handler swaps the left/right arrows (keeping Shift/Alt/Ctrl/Meta) only while a marked-RTL editor is focused. The chosen mode is written to `cursor-rtl-config.json`, which `rtl.js` fetches every few seconds, so changes apply live without a reload.
 
 ### Safety measures
 
-- **Timestamped backups**: Before any modification, `main.js` is backed up as `main.js.rtl-backup-<timestamp>`
-- **Signature verification**: The extension verifies that `main.js` contains the expected Microsoft copyright comment before patching
+- **Per-version backups**: Before any modification, `preload.js` is backed up as `preload.js.rtl-backup-<cursor version>`. `product.json` needs no backup — disabling recomputes the checksum of the restored `preload.js` in place
+- **File-shape verification**: The extension refuses to patch a `preload.js` that no longer looks like the Electron sandbox preload it expects
 - **Idempotent operations**: Enabling when already enabled does nothing; disabling when not enabled does nothing
 - **Transactional writes**: If patching fails mid-way, the backup is automatically restored
+- **Reload-loop guard**: The automatic reload after a re-patch never fires twice for the same Cursor version within 10 minutes
 - **Dry-run preview**: Before enabling, you see exactly which files will be modified
 
 ### Rollback
@@ -136,13 +135,13 @@ For the code editor (Monaco) — the main editing pane, including Markdown and p
 To completely undo all changes:
 
 1. Run `Cursor RTL: Disable RTL Support` from the Command Palette
-2. Restart Cursor
+2. Reload the window when prompted
 
-This restores the original `main.js` from the backup and removes the copied loader script.
+This restores the original `preload.js` and `product.json` from their backups and deletes the injected RTL files.
 
 ## Known Limitations
 
-- Cursor updates may overwrite `main.js`, requiring re-application of the patch
+- In the session where the patch is applied (first enable, and again after each Cursor update, since the automatic re-patch happens mid-session) an "installation appears to be corrupt" notice may appear. Nothing is wrong: `preload.js` is in Cursor's integrity checksums and the checksum Cursor compares against is the one it read at startup. Click **Don't Show Again** once; Cursor remembers that across updates, so the notice does not return
 - The extension shows a "[Unsupported]" warning in Cursor's title bar (same as any extension that modifies app files, like Custom CSS extensions)
 - Requires write permissions to Cursor's app directory (may need Administrator/sudo on some systems)
 - Code editor RTL is a styling + input layer on top of Monaco, which has no native RTL mode. Visual order and arrow-key movement are corrected, but deeply mixed bidi lines can still have edge cases, and the line-number gutter stays on the left (moving it detaches Monaco's line-number positioning)
@@ -150,7 +149,7 @@ This restores the original `main.js` from the backup and removes the copied load
 
 ## Supported Cursor Versions
 
-Compatible with Cursor 2.4.37+ (uses `app.on('browser-window-created')` pattern).
+Developed and verified against Cursor 3.16.x. Older versions back to 2.4.x should work as long as their `preload.js` keeps the same structure; the extension refuses to patch a file it doesn't recognize.
 
 ## Development
 
@@ -180,18 +179,19 @@ $env:CURSOR_RTL_TELEMETRY_OPTOUT = "1"
 
 Persistent opt-out can be configured at the operating system level by setting `CURSOR_RTL_TELEMETRY_OPTOUT=1` for the user or machine environment. `CURSOR_RTL_DISABLE_TELEMETRY=1` is also supported.
 
-The loader writes a local debug log to `cursor-rtl.log` in the user's home directory. It is not sent by telemetry, but it may include local extension paths and workbench URLs, so review it before sharing.
+The injected script logs to the window's developer console with a `[Cursor RTL]` prefix; nothing is written to log files on disk.
 
 ## Troubleshooting
 
-Start with `Cursor RTL: Diagnostics` — it pinpoints the most common problems (patch removed, stale loader, missing restart, permissions) and tells you the exact fix. When opening a GitHub issue, please attach its report.
+Start with `Cursor RTL: Diagnostics` — it pinpoints the most common problems (patch removed, stale RTL script, checksum mismatch, permissions) and tells you the exact fix. When opening a GitHub issue, please attach its report.
 
 | Issue | Solution |
 |-------|----------|
 | Permission denied | **Windows**: Run Cursor as Administrator. **macOS/Linux**: Fix file permissions with `sudo chown` |
-| RTL not working after Enable | Make sure to restart Cursor after enabling |
-| Patch removed after update | Run "Enable RTL / Fix After Update" or enable `cursorRtl.autoReapply` setting |
-| Cursor won't start | Run "Disable RTL Support" or manually restore `main.js` from the backup file |
+| RTL not working after Enable | Reload the window (`Developer: Reload Window`); if that doesn't help, run Diagnostics |
+| Patch removed after update | Normally fixed automatically on the next startup. If not, run "Enable RTL / Fix After Update" |
+| "Installation appears to be corrupt" notice | Appears in the session where the patch was applied or re-applied, including after every Cursor update. Click **Don't Show Again** and it stays gone. Diagnostics shows whether the checksum on disk actually matches |
+| Cursor won't start | Run "Disable RTL Support" or manually restore `preload.js` from the `preload.js.rtl-backup-*` file next to it |
 
 ## License
 

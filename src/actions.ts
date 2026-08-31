@@ -37,6 +37,10 @@ export type InitOptions = {
     extensionVersion?: string;
     channel?: string;
     machineId?: string;
+    installScope?: string;
+    appName?: string;
+    appRoot?: string;
+    elevation?: string;
 };
 
 export function init(opts?: InitOptions): void {
@@ -63,6 +67,10 @@ export function init(opts?: InitOptions): void {
         if (opts?.extensionVersion) extra.extensionVersion = opts.extensionVersion;
         if (opts?.channel) extra.channel = opts.channel;
         if (opts?.machineId) extra.machineId = opts.machineId;
+        if (opts?.installScope) extra.installScope = opts.installScope;
+        if (opts?.appName) extra.appName = opts.appName;
+        if (opts?.appRoot) extra.appRoot = opts.appRoot;
+        if (opts?.elevation) extra.elevation = opts.elevation;
         _client.commonProperties = possibleErrorsInfo(extra);
     } catch {
         // silent

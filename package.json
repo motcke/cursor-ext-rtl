@@ -2,7 +2,7 @@
   "name": "cursor-rtl",
   "displayName": "Cursor RTL",
   "description": "Smart multi-language RTL support for Cursor AI Chat. Uses a purpose-built algorithm that auto-detects text direction per element - Hebrew, Arabic and Persian text is right-aligned while English stays left-aligned.",
-  "version": "1.2.4",
+  "version": "1.3.0",
   "publisher": "motcke",
   "license": "Apache-2.0",
   "icon": "resources/icon.png",
@@ -84,10 +84,10 @@
           "default": true,
           "description": "Right-to-left support in the built-in Markdown preview: every paragraph, heading, list and table cell follows its dominant language. Open previews refresh when this changes."
         },
-        "cursorRtl.autoReapply": {
+        "cursorRtl.autoReloadAfterPatch": {
           "type": "boolean",
-          "default": false,
-          "description": "Automatically re-apply RTL patch when Cursor updates overwrite main.js"
+          "default": true,
+          "description": "After the patch is re-applied (e.g. following a Cursor update), reload the window automatically. When off, a Reload Window prompt is shown instead."
         },
         "cursorRtl.showStatusBar": {
           "type": "boolean",
@@ -117,7 +117,9 @@
     "visual:capture": "node scripts/visual-cursor-capture.mjs",
     "visual:compare": "node scripts/visual-cursor-compare.mjs",
     "visual:approve": "node scripts/visual-cursor-compare.mjs --update-baseline",
-    "visual": "npm run visual:capture && npm run visual:compare"
+    "visual": "npm run visual:capture && npm run visual:compare",
+    "e2e": "node scripts/e2e/run.mjs",
+    "e2e:approve": "node scripts/e2e/run.mjs --approve"
   },
   "devDependencies": {
     "@types/node": "^20.0.0",

@@ -6,6 +6,7 @@ node_modules/**
 scripts/**
 visual/**
 .cursor/**
+.markup/**
 tsconfig.json
 esbuild.js
 .gitignore

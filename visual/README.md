@@ -2,6 +2,11 @@
 
 These checks attach to a running Cursor window through Chrome DevTools Protocol and capture the real Cursor UI.
 
+There are two suites:
+
+- **e2e lab suite** (`npm run e2e`, baselines under `visual/baseline/<scenario>/`) — drives the isolated Cursor copy in `C:\cursor-rtl-lab` through ten scenarios (install, Cursor update, Agents window, disable, permissions, startup timing and more) and compares screenshots per scenario. `npm run e2e:approve` accepts the current actuals as baseline. Requires `node scripts/lab/setup.mjs` once. See `docs/renderer-injection-plan.md` §7.
+- **legacy single-shot capture** (`npm run visual`, below) — captures whatever real Cursor window is listening on CDP port 9222.
+
 ## Privacy Notice
 
 Visual captures can include private information visible in Cursor. The capture command writes screenshots of the Cursor window and `cursor-inspection.json`, which includes the page URL/title and short RTL text samples from visible UI elements. Review `visual/actual` before sharing it.

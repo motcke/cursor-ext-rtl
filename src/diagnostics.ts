@@ -1,14 +1,22 @@
 import * as vscode from 'vscode';
 import * as fs from 'fs';
-import * as os from 'os';
 import * as path from 'path';
-import { getMainJsPath, getAppOutDir, getConfigPath } from './paths';
-import { isPatched, getLoaderVersion } from './patcher';
-import { LOADER_FILENAME, BACKUP_PREFIX } from './constants';
+import {
+    getPreloadJsPath,
+    getProductJsonPath,
+    getConfigPath,
+    getMainJsPath,
+    getRtlScriptDestPath,
+} from './paths';
+import {
+    isPatched,
+    getRtlScriptVersion,
+    sha256Base64NoPad,
+    isLegacyPatched,
+} from './patcher';
+import { CHECKSUM_KEY, BACKUP_PREFIX, LEGACY_LOADER_FILENAME } from './constants';
 import { isMarketplaceInstall } from './updateChecker';
 import { action } from './actions';
-
-const LOG_TAIL_LINES = 15;
 
 interface Finding {
     level: 'ok' | 'warn' | 'error';
@@ -22,31 +30,29 @@ interface DiagnosticsData {
     clientVersion: string;
     platform: string;
     arch: string;
-    mainJsPath: string;
-    mainJsExists: boolean;
+    preloadJsPath: string;
+    preloadJsExists: boolean;
     patched: boolean;
+    preloadJsWritable: boolean | null;
     backups: string[];
-    signatureOk: boolean | null;
-    mainJsWritable: boolean | null;
-    bundledLoaderVersion: string | null;
-    installedLoaderPath: string;
-    installedLoaderExists: boolean;
-    installedLoaderVersion: string | null;
-    logPath: string;
-    logExists: boolean;
-    logMtime: string | null;
-    runningLoaderVersion: string | null;
-    logFatalLines: string[];
-    logTail: string[];
+    productJsonPath: string;
+    checksumInProduct: string | null;
+    checksumActual: string | null;
+    bundledRtlVersion: string | null;
+    installedRtlPath: string;
+    installedRtlExists: boolean;
+    installedRtlVersion: string | null;
     configPath: string;
     configRaw: string | null;
+    legacyMainPatched: boolean;
+    legacyLoaderExists: boolean;
     settings: Record<string, string>;
 }
 
-function listBackups(mainJsDir: string): string[] {
+function listBackups(dir: string): string[] {
     try {
         return fs
-            .readdirSync(mainJsDir)
+            .readdirSync(dir)
             .filter((f) => f.startsWith(BACKUP_PREFIX))
             .sort();
     } catch {
@@ -54,66 +60,37 @@ function listBackups(mainJsDir: string): string[] {
     }
 }
 
-function readLogInfo(logPath: string): {
-    exists: boolean;
-    mtime: string | null;
-    runningVersion: string | null;
-    fatalLines: string[];
-    tail: string[];
-} {
-    try {
-        const stat = fs.statSync(logPath);
-        const content = fs.readFileSync(logPath, 'utf-8');
-        const lines = content.split(/\r?\n/).filter((l) => l.trim() !== '');
-
-        // The loader rewrites the log at every Cursor start and logs its
-        // version once, so the last version= entry is the running loader.
-        let runningVersion: string | null = null;
-        const versionMatches = content.match(/version=(\d+\.\d+\.\d+)/g);
-        if (versionMatches && versionMatches.length > 0) {
-            runningVersion = versionMatches[versionMatches.length - 1].replace('version=', '');
-        }
-
-        return {
-            exists: true,
-            mtime: stat.mtime.toISOString(),
-            runningVersion,
-            fatalLines: lines.filter((l) => l.includes('FATAL')),
-            tail: lines.slice(-LOG_TAIL_LINES),
-        };
-    } catch {
-        return { exists: false, mtime: null, runningVersion: null, fatalLines: [], tail: [] };
-    }
-}
-
 function collectData(context: vscode.ExtensionContext): DiagnosticsData {
-    const mainJsPath = getMainJsPath();
-    const mainJsExists = fs.existsSync(mainJsPath);
+    const preloadJsPath = getPreloadJsPath();
+    const preloadJsExists = fs.existsSync(preloadJsPath);
 
-    let signatureOk: boolean | null = null;
-    if (mainJsExists) {
+    let preloadJsWritable: boolean | null = null;
+    if (preloadJsExists) {
         try {
-            signatureOk = fs
-                .readFileSync(mainJsPath, 'utf-8')
-                .includes('Copyright (C) Microsoft Corporation');
+            fs.accessSync(preloadJsPath, fs.constants.W_OK);
+            preloadJsWritable = true;
         } catch {
-            signatureOk = null;
+            preloadJsWritable = false;
         }
     }
 
-    let mainJsWritable: boolean | null = null;
-    if (mainJsExists) {
-        try {
-            fs.accessSync(mainJsPath, fs.constants.W_OK);
-            mainJsWritable = true;
-        } catch {
-            mainJsWritable = false;
-        }
+    const productJsonPath = getProductJsonPath();
+    let checksumInProduct: string | null = null;
+    try {
+        const product = JSON.parse(fs.readFileSync(productJsonPath, 'utf-8'));
+        checksumInProduct = product.checksums?.[CHECKSUM_KEY] ?? null;
+    } catch {
+        checksumInProduct = null;
     }
 
-    const installedLoaderPath = path.join(getAppOutDir(), LOADER_FILENAME);
-    const logPath = path.join(os.homedir(), 'cursor-rtl.log');
-    const logInfo = readLogInfo(logPath);
+    let checksumActual: string | null = null;
+    if (preloadJsExists) {
+        try {
+            checksumActual = sha256Base64NoPad(preloadJsPath);
+        } catch {
+            checksumActual = null;
+        }
+    }
 
     const configPath = getConfigPath();
     let configRaw: string | null = null;
@@ -123,11 +100,14 @@ function collectData(context: vscode.ExtensionContext): DiagnosticsData {
         configRaw = null;
     }
 
+    const mainJsPath = getMainJsPath();
+    const installedRtlPath = getRtlScriptDestPath();
+
     const config = vscode.workspace.getConfiguration('cursorRtl');
     const settingNames = [
         'editorRtl',
         'markdownPreview',
-        'autoReapply',
+        'autoReloadAfterPatch',
         'showStatusBar',
         'checkForExtensionUpdates',
         'updateCheckIntervalHours',
@@ -145,26 +125,24 @@ function collectData(context: vscode.ExtensionContext): DiagnosticsData {
         clientVersion: vscode.version,
         platform: process.platform,
         arch: process.arch,
-        mainJsPath,
-        mainJsExists,
-        patched: mainJsExists ? isPatched(mainJsPath) : false,
-        backups: mainJsExists ? listBackups(path.dirname(mainJsPath)) : [],
-        signatureOk,
-        mainJsWritable,
-        bundledLoaderVersion: getLoaderVersion(
-            path.join(context.extensionPath, 'resources', LOADER_FILENAME)
+        preloadJsPath,
+        preloadJsExists,
+        patched: preloadJsExists ? isPatched(preloadJsPath) : false,
+        preloadJsWritable,
+        backups: preloadJsExists ? listBackups(path.dirname(preloadJsPath)) : [],
+        productJsonPath,
+        checksumInProduct,
+        checksumActual,
+        bundledRtlVersion: getRtlScriptVersion(
+            path.join(context.extensionPath, 'resources', 'rtl.js')
         ),
-        installedLoaderPath,
-        installedLoaderExists: fs.existsSync(installedLoaderPath),
-        installedLoaderVersion: getLoaderVersion(installedLoaderPath),
-        logPath,
-        logExists: logInfo.exists,
-        logMtime: logInfo.mtime,
-        runningLoaderVersion: logInfo.runningVersion,
-        logFatalLines: logInfo.fatalLines,
-        logTail: logInfo.tail,
+        installedRtlPath,
+        installedRtlExists: fs.existsSync(installedRtlPath),
+        installedRtlVersion: getRtlScriptVersion(installedRtlPath),
         configPath,
         configRaw,
+        legacyMainPatched: fs.existsSync(mainJsPath) ? isLegacyPatched(mainJsPath) : false,
+        legacyLoaderExists: fs.existsSync(path.join(path.dirname(mainJsPath), LEGACY_LOADER_FILENAME)),
         settings,
     };
 }
@@ -174,85 +152,60 @@ function collectData(context: vscode.ExtensionContext): DiagnosticsData {
 function diagnose(d: DiagnosticsData): Finding[] {
     const findings: Finding[] = [];
 
-    if (!d.mainJsExists) {
+    if (!d.preloadJsExists) {
         findings.push({
             level: 'error',
-            text: `Cursor's main.js was not found at ${d.mainJsPath}.`,
+            text: `Cursor's preload.js was not found at ${d.preloadJsPath}.`,
             fix: 'Cursor may be installed in a non-standard location, or this is not a Cursor window. RTL patching cannot work here.',
         });
         return findings;
     }
 
-    if (!d.patched && d.backups.length === 0) {
+    if (!d.patched) {
         findings.push({
             level: 'warn',
-            text: 'The RTL patch has never been applied in this Cursor installation.',
-            fix: 'Run "Cursor RTL: Enable RTL Support" and restart Cursor.',
-        });
-        return findings;
-    }
-
-    if (!d.patched && d.backups.length > 0) {
-        findings.push({
-            level: 'error',
-            text: 'A Cursor update overwrote main.js — the RTL patch is no longer applied.',
-            fix: 'Run "Cursor RTL: Enable RTL / Fix After Update". Tip: enable cursorRtl.autoReapply to do this automatically.',
+            text: 'The RTL patch is not applied to preload.js.',
+            fix: 'Run "Cursor RTL: Enable RTL / Fix After Update". After a Cursor update this normally happens automatically on startup.',
         });
     }
 
-    if (d.patched && !d.installedLoaderExists) {
+    if (d.patched && !d.installedRtlExists) {
         findings.push({
             level: 'error',
-            text: `main.js is patched but the loader file is missing (${d.installedLoaderPath}). Cursor logs a load error and RTL stays off.`,
-            fix: 'Run "Cursor RTL: Enable RTL / Fix After Update" to restore the loader.',
+            text: `preload.js is patched but the RTL script is missing (${d.installedRtlPath}). The import fails and RTL stays off.`,
+            fix: 'Run "Cursor RTL: Enable RTL / Fix After Update" to restore it.',
         });
     }
 
     if (
-        d.bundledLoaderVersion &&
-        d.installedLoaderExists &&
-        d.installedLoaderVersion !== d.bundledLoaderVersion
+        d.bundledRtlVersion &&
+        d.installedRtlExists &&
+        d.installedRtlVersion !== d.bundledRtlVersion
     ) {
         findings.push({
             level: 'warn',
-            text: `The installed loader (${d.installedLoaderVersion ?? 'pre-1.3.0'}) is older than the one bundled with this extension (${d.bundledLoaderVersion}).`,
-            fix: 'Run "Cursor RTL: Enable RTL / Fix After Update". If it fails with a permission error, run Cursor as Administrator once and retry.',
-        });
-    }
-
-    if (d.patched && !d.logExists) {
-        findings.push({
-            level: 'warn',
-            text: 'main.js is patched but the loader has not written its log — the patched code has not run yet.',
-            fix: 'Close ALL Cursor windows and reopen (a full restart, not just a window reload).',
+            text: `The installed RTL script (${d.installedRtlVersion ?? 'unversioned'}) differs from the one bundled with this extension (${d.bundledRtlVersion}).`,
+            fix: 'Run "Cursor RTL: Enable RTL / Fix After Update", then reload the window.',
         });
     }
 
     if (
-        d.logExists &&
-        d.runningLoaderVersion &&
-        d.installedLoaderVersion &&
-        d.runningLoaderVersion !== d.installedLoaderVersion
+        d.patched &&
+        d.checksumInProduct !== null &&
+        d.checksumActual !== null &&
+        d.checksumInProduct !== d.checksumActual
     ) {
         findings.push({
             level: 'warn',
-            text: `Cursor is still running loader ${d.runningLoaderVersion}, but ${d.installedLoaderVersion} is installed on disk.`,
-            fix: 'Close ALL Cursor windows and reopen so the updated loader is loaded.',
+            text: 'The preload.js checksum in product.json does not match the file on disk — Cursor may warn that the installation is corrupt.',
+            fix: 'Run "Cursor RTL: Enable RTL / Fix After Update" to rewrite the checksum. The warning itself is safe to ignore.',
         });
     }
 
-    for (const line of d.logFatalLines) {
-        findings.push({
-            level: 'error',
-            text: `Loader logged a fatal error: ${line}`,
-            fix: 'Share the diagnostics report in a GitHub issue if this persists.',
-        });
-    }
-
-    if (d.mainJsWritable === false) {
+    if (d.preloadJsWritable === false) {
         findings.push({
             level: 'warn',
-            text: 'main.js is not writable by the current user.',
+            text: 'preload.js is not writable by the current user.',
             fix:
                 process.platform === 'win32'
                     ? 'Future re-applies will need Cursor to run as Administrator.'
@@ -260,19 +213,19 @@ function diagnose(d: DiagnosticsData): Finding[] {
         });
     }
 
-    if (d.signatureOk === false) {
+    if (d.legacyMainPatched || d.legacyLoaderExists) {
         findings.push({
             level: 'warn',
-            text: 'main.js does not contain the expected Microsoft copyright signature.',
-            fix: 'This Cursor version may be unsupported; the Enable / Fix command will refuse to patch it.',
+            text: 'Leftovers of the old (pre-1.3.0) main.js patch are still present.',
+            fix: 'They are harmless and normally removed automatically on startup. If they persist, run Cursor as Administrator once.',
         });
     }
 
     if (findings.length === 0) {
         findings.push({
             level: 'ok',
-            text: 'Everything looks healthy: main.js is patched, the loader is current and has run.',
-            fix: 'If RTL still does not render, check the log tail below and open a GitHub issue with this report.',
+            text: 'Everything looks healthy: preload.js is patched, the RTL script is current, and the checksum matches.',
+            fix: 'If RTL still does not render, reload the window; if that does not help, open a GitHub issue with this report.',
         });
     }
 
@@ -311,26 +264,36 @@ function formatReport(d: DiagnosticsData, findings: Finding[]): string {
         `|------|-------|`,
         `| Extension | ${d.extensionVersion} |`,
         `| Install source | ${d.installSource === 'marketplace' ? 'marketplace (updated by Cursor)' : 'manual VSIX (self-updater active)'} |`,
-        `| Loader (bundled) | ${d.bundledLoaderVersion ?? 'unknown'} |`,
-        `| Loader (installed) | ${d.installedLoaderExists ? d.installedLoaderVersion ?? 'pre-1.3.0 (no marker)' : 'not installed'} |`,
-        `| Loader (running) | ${d.runningLoaderVersion ?? 'unknown'} |`,
+        `| RTL script (bundled) | ${d.bundledRtlVersion ?? 'unknown'} |`,
+        `| RTL script (installed) | ${d.installedRtlExists ? d.installedRtlVersion ?? 'unversioned' : 'not installed'} |`,
         `| Cursor (VS Code API) | ${d.clientVersion} |`,
         `| Platform | ${d.platform} ${d.arch} |`,
         '',
         '## Patch state',
         '',
-        `- main.js: \`${d.mainJsPath}\``,
-        `- main.js exists: ${yesNo(d.mainJsExists)}`,
+        `- preload.js: \`${d.preloadJsPath}\``,
+        `- preload.js exists: ${yesNo(d.preloadJsExists)}`,
         `- Patch applied: ${yesNo(d.patched)}`,
-        `- Microsoft signature present: ${yesNo(d.signatureOk)}`,
-        `- main.js writable: ${yesNo(d.mainJsWritable)}`,
-        `- Backups: ${d.backups.length}${d.backups.length > 0 ? ` (latest: \`${d.backups[d.backups.length - 1]}\`)` : ''}`,
-        `- Loader file: \`${d.installedLoaderPath}\` (exists: ${yesNo(d.installedLoaderExists)})`,
+        `- preload.js writable: ${yesNo(d.preloadJsWritable)}`,
+        `- Backups: ${d.backups.length}${d.backups.length > 0 ? ` (${d.backups.join(', ')})` : ''}`,
+        `- RTL script: \`${d.installedRtlPath}\` (exists: ${yesNo(d.installedRtlExists)})`,
+        '',
+        '## Integrity checksum',
+        '',
+        `- product.json: \`${d.productJsonPath}\``,
+        `- Checksum in product.json: \`${d.checksumInProduct ?? 'missing'}\``,
+        `- Checksum of preload.js on disk: \`${d.checksumActual ?? 'unknown'}\``,
+        `- Match: ${yesNo(d.checksumInProduct !== null && d.checksumActual !== null ? d.checksumInProduct === d.checksumActual : null)}`,
         '',
         '## Runtime config',
         '',
         `- Config file: \`${d.configPath}\``,
-        `- Contents: ${d.configRaw ? `\`${d.configRaw}\`` : 'missing (loader defaults to editorRtl: auto)'}`,
+        `- Contents: ${d.configRaw ? `\`${d.configRaw}\`` : 'missing (rtl.js defaults to editorRtl: auto)'}`,
+        '',
+        '## Legacy (pre-1.3.0) leftovers',
+        '',
+        `- main.js still patched: ${yesNo(d.legacyMainPatched)}`,
+        `- Old loader file present: ${yesNo(d.legacyLoaderExists)}`,
         '',
         '## Settings',
         ''
@@ -338,13 +301,6 @@ function formatReport(d: DiagnosticsData, findings: Finding[]): string {
 
     for (const [name, value] of Object.entries(d.settings)) {
         lines.push(`- \`cursorRtl.${name}\`: ${value}`);
-    }
-
-    lines.push('', '## Loader log', '', `- Path: \`${d.logPath}\``);
-    if (d.logExists) {
-        lines.push(`- Last modified: ${d.logMtime}`, '', '```', ...d.logTail, '```');
-    } else {
-        lines.push('- Log file not found (the loader has not run).');
     }
 
     lines.push('');
