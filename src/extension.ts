@@ -44,6 +44,7 @@ import {
     error as actionError,
     dispose as disposeActions,
 } from './actions';
+import { LEGACY_LOADER_FILENAME } from './constants';
 
 let statusBarItem: vscode.StatusBarItem;
 let blinkInterval: ReturnType<typeof setInterval> | undefined;
@@ -778,12 +779,31 @@ function scheduleExtensionUpdateChecks(context: vscode.ExtensionContext): void {
 // 1.2.x migration (plan §3.8): undo the old main-process patch. Failures are
 // swallowed — the leftover is harmless (rtl.js's re-injection guard) and the
 // next Cursor update erases the patched main.js anyway.
-function runLegacyMigration(): void {
+//
+// A patched main.js or a loader file next to it means RTL was enabled under
+// 1.2.x, and 1.2.x never wrote everEnabled. Record that consent here, before
+// the leftovers are removed, so the startup flow takes the silent automatic
+// re-apply path instead of showing the first-install dialog to every
+// upgrading user (a dismissed dialog would have switched RTL off for good).
+async function runLegacyMigration(context: vscode.ExtensionContext): Promise<void> {
     try {
         const mainJsPath = getMainJsPath();
-        if (fs.existsSync(mainJsPath) && isLegacyPatched(mainJsPath)) {
+        const legacyPatched = fs.existsSync(mainJsPath) && isLegacyPatched(mainJsPath);
+        const legacyLoader = fs.existsSync(
+            path.join(path.dirname(mainJsPath), LEGACY_LOADER_FILENAME)
+        );
+        if (
+            (legacyPatched || legacyLoader) &&
+            !context.globalState.get<boolean>(EVER_ENABLED_KEY)
+        ) {
+            await context.globalState.update(EVER_ENABLED_KEY, true);
+            action('legacy_consent_carried_over');
+        }
+        if (legacyPatched) {
             removeLegacyPatch(mainJsPath);
             action('legacy_migrated');
+        } else if (legacyLoader) {
+            fs.rmSync(path.join(path.dirname(mainJsPath), LEGACY_LOADER_FILENAME), { force: true });
         }
     } catch {
         // best-effort
@@ -882,7 +902,7 @@ function refreshRtlScript(context: vscode.ExtensionContext): void {
 
 // Startup flow (plan §3.6).
 async function runStartupFlow(context: vscode.ExtensionContext): Promise<void> {
-    runLegacyMigration();
+    await runLegacyMigration(context);
 
     const validation = validatePaths();
     if (!validation.valid) {
