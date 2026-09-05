@@ -1,7 +1,7 @@
 // Machine-readable version marker, compared by the extension between its
 // bundled copy and the installed cursor-rtl.js to detect a needed refresh.
 // Keep the exact `var RTL_VERSION = "x.y.z"` form — it is parsed by regex.
-var RTL_VERSION = "1.3.0";
+var RTL_VERSION = "2.0.0";
 
 function __cursorRtlMain() {
     var RTL_LOG = "[Cursor RTL]";
