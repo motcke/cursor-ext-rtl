@@ -58,7 +58,6 @@ Smart multi-language RTL support for [Cursor](https://cursor.com) AI Chat, Agent
 | `Cursor RTL: Enable RTL / Fix After Update` | Backup `preload.js`, apply the RTL patch and update the integrity checksum. Re-applying after a Cursor update normally happens automatically on startup; the command stays as a manual fallback |
 | `Cursor RTL: Disable RTL Support` | Restore the original `preload.js` and `product.json` from backup, delete the injected RTL files |
 | `Cursor RTL: Check Status` | Show whether the RTL patch is currently active |
-| `Cursor RTL: Check for Extension Updates` | Check GitHub releases now and install any newer version in the background |
 | `Cursor RTL: Code Editor Direction (Auto / Always / Off)` | Choose how the code editor (Monaco) — including Markdown/plain-text — picks its direction |
 | `Cursor RTL: Diagnostics` | Generate a full diagnostics report (patch state, checksum match, versions) with a suggested fix |
 
@@ -77,8 +76,8 @@ Click the status bar item for a quick-pick menu with available actions.
 | `cursorRtl.markdownPreview` | `true` | Per-block RTL in the built-in Markdown preview (paragraphs, headings, lists, table cells follow their dominant language). Open previews refresh when this changes |
 | `cursorRtl.autoReloadAfterPatch` | `true` | After the patch is re-applied (e.g. following a Cursor update), reload the window automatically. When off, you get a Reload prompt instead |
 | `cursorRtl.showStatusBar` | `true` | Show RTL status indicator in the status bar |
-| `cursorRtl.checkForExtensionUpdates` | `true` | Automatically check GitHub releases for Cursor RTL updates and install them in the background (small progress toast; you only confirm the window reload) |
-| `cursorRtl.updateCheckIntervalHours` | `6` | How often to check for extension updates while Cursor is open |
+| `cursorRtl.checkForExtensionUpdates` | `true` | VSIX installs only: check for updates in the background and install them automatically — from the marketplace when it carries the new version (which also moves future updates to the marketplace), otherwise from GitHub releases. Marketplace installs are updated by Cursor itself and never use this |
+| `cursorRtl.updateCheckIntervalHours` | `6` | How often the background update check runs while Cursor is open (VSIX installs only) |
 
 ## Installation
 

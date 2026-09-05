@@ -47,7 +47,7 @@ function parseVersion(tag: string): number[] {
         });
 }
 
-function isNewer(remote: string, local: string): boolean {
+export function isNewer(remote: string, local: string): boolean {
     const r = parseVersion(remote);
     const l = parseVersion(local);
     for (let i = 0; i < Math.max(r.length, l.length); i++) {
@@ -169,13 +169,53 @@ export function downloadFile(
     });
 }
 
-// Cursor stamps __metadata into the installed package.json for every install,
-// but only gallery installs carry marketplace-assigned identifiers
-// (id/publisherId, sometimes source: 'gallery'); manual VSIX installs get
-// installedTimestamp alone. Marketplace installs are auto-updated by Cursor
-// itself, so our GitHub-based checker stands down for them. Unknown/parse
+interface ExtensionsJsonEntry {
+    relativeLocation?: string;
+    location?: { path?: string };
+    metadata?: { source?: string; pinned?: boolean };
+}
+
+// Reads the install source from extensions.json, the file Cursor keeps next
+// to the installed extension dirs — its metadata.source ('gallery' | 'vsix')
+// is the ground truth: current Cursor no longer stamps gallery identifiers
+// into the installed package.json's __metadata, and even VSIX installs get
+// gallery-resolved id/publisherId in extensions.json, so neither presence
+// test works anymore. pinned counts too: a pinned install (every VSIX
+// install, or a user-pinned version) is excluded from Cursor's auto-updates,
+// so for our purposes it is not a marketplace install even with a gallery
+// source. Returns undefined when extensions.json is missing, unmatched, or
+// predates the source field (older Cursor) — the caller then falls back.
+function marketplacePerExtensionsJson(extensionPath: string): boolean | undefined {
+    try {
+        const raw = fs.readFileSync(
+            path.join(path.dirname(extensionPath), 'extensions.json'),
+            'utf-8'
+        );
+        const entries = JSON.parse(raw) as ExtensionsJsonEntry[];
+        if (!Array.isArray(entries)) return undefined;
+        const dirName = path.basename(extensionPath).toLowerCase();
+        const entry = entries.find((e) => {
+            const rel = e.relativeLocation ?? e.location?.path?.split('/').pop();
+            return rel?.toLowerCase() === dirName;
+        });
+        const source = entry?.metadata?.source;
+        if (typeof source !== 'string') return undefined;
+        return source === 'gallery' && entry?.metadata?.pinned !== true;
+    } catch {
+        return undefined;
+    }
+}
+
+// Marketplace installs are auto-updated by Cursor itself, so our GitHub-based
+// checker stands down for them. extensions.json decides (see above); the
+// installed package.json's __metadata — where installs made by older Cursor
+// versions carry gallery id/publisherId — is only the fallback. Unknown/parse
 // failure counts as a VSIX install — the safe default is to keep checking.
 export function isMarketplaceInstall(extensionPath: string): boolean {
+    const perExtensionsJson = marketplacePerExtensionsJson(extensionPath);
+    if (perExtensionsJson !== undefined) {
+        return perExtensionsJson;
+    }
     try {
         const raw = fs.readFileSync(path.join(extensionPath, 'package.json'), 'utf-8');
         const metadata = (JSON.parse(raw) as {

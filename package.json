@@ -49,10 +49,6 @@
         "title": "Cursor RTL: Check Status"
       },
       {
-        "command": "cursorRtl.checkForUpdates",
-        "title": "Cursor RTL: Check for Extension Updates"
-      },
-      {
         "command": "cursorRtl.setEditorRtl",
         "title": "Cursor RTL: Code Editor Direction (Auto / Always / Off)"
       },
@@ -97,13 +93,13 @@
         "cursorRtl.checkForExtensionUpdates": {
           "type": "boolean",
           "default": true,
-          "description": "Automatically check GitHub releases for Cursor RTL updates and install them in the background (a small toast shows progress; you only confirm the window reload)"
+          "description": "VSIX installs only: check for Cursor RTL updates in the background and install them automatically, preferring the marketplace over the GitHub release (a small toast shows progress; you only confirm the window reload). Marketplace installs are updated by Cursor itself and ignore this setting."
         },
         "cursorRtl.updateCheckIntervalHours": {
           "type": "number",
           "default": 6,
           "minimum": 1,
-          "description": "How often to check for Cursor RTL extension updates while Cursor is open"
+          "description": "How often the background update check runs while Cursor is open (VSIX installs only)"
         }
       }
     }

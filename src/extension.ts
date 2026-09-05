@@ -31,6 +31,7 @@ import {
     checkForExtensionUpdate,
     downloadFile,
     isMarketplaceInstall,
+    isNewer,
     UpdateCheckResult,
 } from './updateChecker';
 import { grantWriteAccess, isPermissionError } from './elevate';
@@ -51,7 +52,7 @@ let startupUpdateCheckTimeout: ReturnType<typeof setTimeout> | undefined;
 let updateCheckInterval: ReturnType<typeof setInterval> | undefined;
 
 type PatchState = 'on' | 'off';
-type UpdateCheckMode = 'startup' | 'periodic' | 'manual';
+type UpdateCheckMode = 'startup' | 'periodic';
 
 const STARTUP_UPDATE_CHECK_DELAY_MS = 5_000;
 const MS_PER_HOUR = 60 * 60 * 1000;
@@ -490,33 +491,131 @@ async function handleUpdateAvailable(
 ): Promise<void> {
     action('version_available', { mode, version: result.remoteVersion });
 
-    // Release without a VSIX asset: nothing to auto-install.
-    if (!result.vsixDownloadUrl) {
-        if (mode === 'manual') {
-            const choice = await vscode.window.showInformationMessage(
-                `Cursor RTL: A new version is available (${result.remoteVersion}).`,
-                'Open Release Page'
-            );
-            if (choice === 'Open Release Page') {
-                action('update_action_release_page', { mode, version: result.remoteVersion });
-                await vscode.env.openExternal(vscode.Uri.parse(result.releaseUrl));
-            }
-        }
-        return;
-    }
-
     // Already installed (possibly by another window) and awaiting reload —
     // don't reinstall and re-toast on every periodic check.
     if (context.globalState.get<string>(PENDING_UPDATE_KEY) === result.remoteVersion) {
-        if (mode === 'manual') {
-            await offerReload(
-                `Cursor RTL ${result.remoteVersion} is already installed. Reload the window to activate it.`
-            );
-        }
+        return;
+    }
+
+    // The marketplace conversion below uninstalls before it installs, and
+    // the GitHub VSIX is the recovery path if the gallery install then
+    // fails — so a release without a VSIX asset installs nothing, and a
+    // later check retries once the release carries one.
+    if (!result.vsixDownloadUrl) {
+        return;
+    }
+
+    // Prefer the marketplace over the GitHub VSIX: a fresh gallery install
+    // writes source: 'gallery' with pinned: false into extensions.json,
+    // converting this VSIX install into one Cursor auto-updates itself —
+    // after the reload isMarketplaceInstall is true and this checker stands
+    // down for good.
+    if (await tryMarketplaceUpdate(context, result, mode)) {
         return;
     }
 
     await autoInstallExtensionUpdate(context, result, mode);
+}
+
+// The newest version of this extension present on disk, read from the
+// sibling install directories (~/.cursor/extensions/<publisher>.<name>-*).
+// vscode.extensions still reports the loaded (old) version until reload, so
+// the disk is the only place a just-installed copy is visible.
+function getNewestInstalledVersion(context: vscode.ExtensionContext): string | null {
+    try {
+        const extensionsRoot = path.dirname(context.extensionPath);
+        const prefix = `${context.extension.id.toLowerCase()}-`;
+        let newest: string | null = null;
+        for (const entry of fs.readdirSync(extensionsRoot)) {
+            if (!entry.toLowerCase().startsWith(prefix)) {
+                continue;
+            }
+            try {
+                const raw = fs.readFileSync(
+                    path.join(extensionsRoot, entry, 'package.json'),
+                    'utf-8'
+                );
+                const version = (JSON.parse(raw) as { version?: string }).version;
+                if (version && (!newest || isNewer(version, newest))) {
+                    newest = version;
+                }
+            } catch {
+                // Half-removed install dir — skip it.
+            }
+        }
+        return newest;
+    } catch {
+        return null;
+    }
+}
+
+// Installs the update from Cursor's marketplace by extension ID. Returns
+// false — sending the caller to the GitHub VSIX fallback — when the gallery
+// is unreachable or its mirror hasn't picked up the release yet (the
+// installer silently no-ops when it has nothing newer, so success is
+// verified against the disk, not the command result).
+//
+// The uninstall first is what makes this a real conversion: installExtension
+// alone re-extracts the newer version but carries the VSIX install's
+// pinned: true over to the new extensions.json entry, and pinned installs
+// are excluded from Cursor's auto-updates (verified in the lab, 2026-09-02).
+// Only uninstall + install writes pinned: false. The uninstalled extension
+// keeps running until restart, so it can run both commands on itself, and
+// the caller guarantees a GitHub VSIX exists as the recovery install if the
+// gallery install fails after the uninstall.
+async function tryMarketplaceUpdate(
+    context: vscode.ExtensionContext,
+    result: Extract<UpdateCheckResult, { status: 'updateAvailable' }>,
+    mode: UpdateCheckMode
+): Promise<boolean> {
+    try {
+        await vscode.window.withProgress(
+            {
+                location: vscode.ProgressLocation.Notification,
+                title: `Cursor RTL: Updating to ${result.remoteVersion}`,
+            },
+            async (progress) => {
+                progress.report({ message: 'Installing from marketplace…' });
+                try {
+                    await vscode.commands.executeCommand(
+                        'workbench.extensions.uninstallExtension',
+                        context.extension.id
+                    );
+                } catch (err) {
+                    // Not fatal: the install below still updates the
+                    // version; the pin then survives and this checker
+                    // simply stays in charge of future updates.
+                    actionError(err, { op: 'update_uninstall_marketplace', mode });
+                }
+                await vscode.commands.executeCommand(
+                    'workbench.extensions.installExtension',
+                    context.extension.id
+                );
+            }
+        );
+    } catch (err) {
+        actionError(err, {
+            op: 'update_install_marketplace',
+            mode,
+            version: result.remoteVersion,
+        });
+        return false;
+    }
+
+    const installed = getNewestInstalledVersion(context);
+    if (!installed || !isNewer(installed, result.currentVersion)) {
+        action('update_marketplace_lagging', { mode, installed: installed ?? 'none' });
+        return false;
+    }
+
+    action('update_install_marketplace_ok', { mode, version: installed });
+    // Keyed by remoteVersion (not installed) so the pending dedup above
+    // matches what the next GitHub check reports.
+    await context.globalState.update(PENDING_UPDATE_KEY, result.remoteVersion);
+    await offerReload(
+        `Cursor RTL updated to ${installed} from the marketplace. Reload the window to activate it.`
+    );
+    return true;
 }
 
 // Downloads the release VSIX and installs it in the background. On any
@@ -608,8 +707,17 @@ async function runExtensionUpdateCheck(
     context: vscode.ExtensionContext,
     mode: UpdateCheckMode
 ): Promise<void> {
+    // Installing a GitHub VSIX over a marketplace install would strip the
+    // gallery metadata and detach the user from Cursor's own auto-updates,
+    // so marketplace installs never touch the GitHub flow. Scheduling
+    // already skips them; this guard is defense in depth.
+    if (isMarketplaceInstall(context.extensionPath)) {
+        action('update_check_skipped_marketplace', { mode });
+        return;
+    }
+
     const config = getUpdateCheckConfig();
-    if (!config.enabled && mode !== 'manual') {
+    if (!config.enabled) {
         return;
     }
 
@@ -618,21 +726,12 @@ async function runExtensionUpdateCheck(
 
     if (result.status === 'failed') {
         action('update_check_failed', { mode, error: result.error });
-        if (mode === 'manual') {
-            vscode.window.showWarningMessage(
-                `Cursor RTL: Could not check for extension updates. ${result.error}`
-            );
-        }
         return;
     }
 
     if (result.status === 'upToDate') {
         // Any previously auto-installed update is now the running version.
         void context.globalState.update(PENDING_UPDATE_KEY, undefined);
-        if (mode === 'manual') {
-            const version = result.remoteVersion ?? result.currentVersion;
-            vscode.window.showInformationMessage(`Cursor RTL is up to date (${version}).`);
-        }
         return;
     }
 
@@ -661,7 +760,7 @@ function scheduleExtensionUpdateChecks(context: vscode.ExtensionContext): void {
 
     // Marketplace installs are kept current by Cursor's own extension
     // updater — running our GitHub checker too would double the update UX.
-    // The manual "Check for Extension Updates" command still works.
+    // runExtensionUpdateCheck re-checks as defense in depth.
     if (isMarketplaceInstall(context.extensionPath)) {
         action('update_checks_skipped_marketplace_install');
         return;
@@ -932,12 +1031,6 @@ export function activate(context: vscode.ExtensionContext): { extendMarkdownIt(m
     context.subscriptions.push(
         vscode.commands.registerCommand('cursorRtl.status', () =>
             statusCommand()
-        )
-    );
-
-    context.subscriptions.push(
-        vscode.commands.registerCommand('cursorRtl.checkForUpdates', () =>
-            runExtensionUpdateCheck(context, 'manual')
         )
     );
 
