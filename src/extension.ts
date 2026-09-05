@@ -1,5 +1,5 @@
 import * as vscode from 'vscode';
-import { spawnSync } from 'child_process';
+import { spawn } from 'child_process';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
@@ -33,9 +33,16 @@ import {
     isMarketplaceInstall,
     UpdateCheckResult,
 } from './updateChecker';
+import { grantWriteAccess, isPermissionError } from './elevate';
 import { runDiagnostics } from './diagnostics';
 import { markdownItCursorRtl, MarkdownItLike } from './markdownItRtl';
-import { init as initActions, action, error as actionError, dispose as disposeActions } from './actions';
+import {
+    init as initActions,
+    setCommonProperty,
+    action,
+    error as actionError,
+    dispose as disposeActions,
+} from './actions';
 
 let statusBarItem: vscode.StatusBarItem;
 let blinkInterval: ReturnType<typeof setInterval> | undefined;
@@ -298,6 +305,51 @@ async function applyFullPatch(
     }
 }
 
+const FIX_PERMISSIONS_BUTTON = 'Fix permissions (Admin)';
+
+// Runs the one-time elevated ACL grant (elevate.ts) behind a UAC prompt and,
+// when it sticks, retries the operation that just failed. From then on the
+// machine-wide install behaves like a per-user one — no elevation needed for
+// enable/disable, the auto re-patch after Cursor updates, script refresh or
+// the uninstall hook.
+async function runPermissionFix(retry: () => Promise<void>): Promise<void> {
+    const result = await grantWriteAccess();
+    action('elevation_grant', { result });
+    if (result === 'granted') {
+        try {
+            await retry();
+        } catch (err) {
+            actionError(err, { op: 'elevation_retry' });
+            vscode.window.showErrorMessage(`Cursor RTL: ${handlePermissionError(err)}`);
+        }
+    } else if (result === 'cancelled') {
+        vscode.window.showInformationMessage(
+            'Cursor RTL: The administrator prompt was dismissed; nothing was changed.'
+        );
+    } else {
+        vscode.window.showErrorMessage(
+            'Cursor RTL: Fixing permissions failed. Run Cursor as Administrator once and try again.'
+        );
+    }
+}
+
+// A permission failure on a machine-wide install gets a one-click fix button
+// next to the error; any other error keeps the plain message.
+async function showErrorWithPermissionFix(
+    err: unknown,
+    message: string,
+    retry: () => Promise<void>
+): Promise<void> {
+    if (process.platform !== 'win32' || !isPermissionError(err)) {
+        void vscode.window.showErrorMessage(message);
+        return;
+    }
+    const choice = await vscode.window.showErrorMessage(message, FIX_PERMISSIONS_BUTTON);
+    if (choice === FIX_PERMISSIONS_BUTTON) {
+        await runPermissionFix(retry);
+    }
+}
+
 // Single apply entry point for both "enable" and "fix after a Cursor
 // update" — the underlying operation is identical and idempotent. Only a
 // first-ever enable asks for consent with a dry-run preview.
@@ -330,7 +382,11 @@ async function enableCommand(context: vscode.ExtensionContext): Promise<void> {
         await applyFullPatch(context, { firstTime, auto: false });
     } catch (err) {
         actionError(err, { op: firstTime ? 'patch_apply' : 'patch_reapply' });
-        vscode.window.showErrorMessage(`Cursor RTL: ${handlePermissionError(err)}`);
+        await showErrorWithPermissionFix(
+            err,
+            `Cursor RTL: ${handlePermissionError(err)}`,
+            () => applyFullPatch(context, { firstTime, auto: false })
+        );
     }
 }
 
@@ -351,7 +407,7 @@ async function disableCommand(context: vscode.ExtensionContext): Promise<void> {
         return;
     }
 
-    try {
+    const doRemove = async (): Promise<void> => {
         const preloadJsPath = validation.preloadJsPath;
         removePatch(preloadJsPath, getProductVersion());
         try {
@@ -365,9 +421,17 @@ async function disableCommand(context: vscode.ExtensionContext): Promise<void> {
         updateStatusBar('off');
 
         await offerReload('RTL patch removed. Reload the window to apply.');
+    };
+
+    try {
+        await doRemove();
     } catch (err) {
         actionError(err, { op: 'patch_remove' });
-        vscode.window.showErrorMessage(`Cursor RTL: ${handlePermissionError(err)}`);
+        await showErrorWithPermissionFix(
+            err,
+            `Cursor RTL: ${handlePermissionError(err)}`,
+            doRemove
+        );
     }
 }
 
@@ -658,11 +722,22 @@ function warnRefreshFailed(
         version: bundled,
         appPid: process.ppid,
     } satisfies RefreshWarned);
-    vscode.window.showWarningMessage(
-        `Cursor RTL: Updating the injected RTL script to ${bundled} failed. ` +
-        `${handlePermissionError(err)} ` +
-        'RTL keeps working with the previously installed version.'
-    );
+    const buttons =
+        process.platform === 'win32' && isPermissionError(err)
+            ? [FIX_PERMISSIONS_BUTTON]
+            : [];
+    void vscode.window
+        .showWarningMessage(
+            `Cursor RTL: Updating the injected RTL script to ${bundled} failed. ` +
+            `${handlePermissionError(err)} ` +
+            'RTL keeps working with the previously installed version.',
+            ...buttons
+        )
+        .then(async (choice) => {
+            if (choice === FIX_PERMISSIONS_BUTTON) {
+                await runPermissionFix(async () => refreshRtlScript(context));
+            }
+        });
 }
 
 // When the patch is already on, keep the installed cursor-rtl.js current with
@@ -746,11 +821,17 @@ async function runStartupFlow(context: vscode.ExtensionContext): Promise<void> {
     } catch (err) {
         actionError(err, { op: 'patch_auto_reapply' });
         updateStatusBar('off');
+        const buttons =
+            process.platform === 'win32' && isPermissionError(err)
+                ? [FIX_PERMISSIONS_BUTTON, 'Retry']
+                : ['Retry'];
         const choice = await vscode.window.showWarningMessage(
             `Cursor RTL: Re-applying the patch after a Cursor update failed. ${handlePermissionError(err)}`,
-            'Retry'
+            ...buttons
         );
-        if (choice === 'Retry') {
+        if (choice === FIX_PERMISSIONS_BUTTON) {
+            await runPermissionFix(() => applyFullPatch(context, { firstTime: false, auto: true }));
+        } else if (choice === 'Retry') {
             await enableCommand(context);
         }
     }
@@ -775,18 +856,36 @@ function getInstallScope(): string {
 }
 
 // The extension host inherits the IDE process's elevation. On Windows,
-// fltmc.exe exits 0 only when elevated; on POSIX, uid 0 means root.
-function getElevation(): string {
-    try {
-        if (process.platform === 'win32') {
-            const r = spawnSync('fltmc.exe', [], { windowsHide: true, timeout: 3000 });
-            if (r.error) return 'unknown';
-            return r.status === 0 ? 'admin' : 'user';
+// fltmc.exe exits 0 only when elevated; on POSIX, uid 0 means root. The
+// Windows probe spawns a process, so it runs asynchronously: activate()
+// must not block the extension host on it.
+function getElevation(): Promise<string> {
+    if (process.platform !== 'win32') {
+        try {
+            return Promise.resolve(process.getuid?.() === 0 ? 'admin' : 'user');
+        } catch {
+            return Promise.resolve('unknown');
         }
-        return process.getuid?.() === 0 ? 'admin' : 'user';
-    } catch {
-        return 'unknown';
     }
+    return new Promise((resolve) => {
+        try {
+            const child = spawn('fltmc.exe', [], { windowsHide: true, stdio: 'ignore' });
+            const timer = setTimeout(() => {
+                child.kill();
+                resolve('unknown');
+            }, 3000);
+            child.on('error', () => {
+                clearTimeout(timer);
+                resolve('unknown');
+            });
+            child.on('close', (code) => {
+                clearTimeout(timer);
+                resolve(code === 0 ? 'admin' : 'user');
+            });
+        } catch {
+            resolve('unknown');
+        }
+    });
 }
 
 export function activate(context: vscode.ExtensionContext): { extendMarkdownIt(md: unknown): unknown } {
@@ -799,9 +898,12 @@ export function activate(context: vscode.ExtensionContext): { extendMarkdownIt(m
         channel,
         machineId: vscode.env.machineId,
         installScope: getInstallScope(),
+        // Captured at activation, so events sent after a mid-session
+        // VSIX→marketplace conversion still report the pre-conversion source
+        // until the window reloads.
+        installSource: isMarketplaceInstall(context.extensionPath) ? 'marketplace' : 'vsix',
         appName: vscode.env.appName,
         appRoot: vscode.env.appRoot,
-        elevation: getElevation(),
     });
 
     statusBarItem = vscode.window.createStatusBarItem(
@@ -869,10 +971,16 @@ export function activate(context: vscode.ExtensionContext): { extendMarkdownIt(m
         }
     }, null, context.subscriptions);
 
-    action('ext_start', {
-        state: getPatchState(),
-        platform: process.platform,
-        installSource: isMarketplaceInstall(context.extensionPath) ? 'marketplace' : 'vsix',
+    // installSource rides on every event as a common property (set in
+    // initActions above), ext_start included. elevation joins the common
+    // properties once the async probe answers; ext_start waits for it so the
+    // first event already carries it.
+    void getElevation().then((elevation) => {
+        setCommonProperty('elevation', elevation);
+        action('ext_start', {
+            state: getPatchState(),
+            platform: process.platform,
+        });
     });
 
     void runStartupFlow(context);

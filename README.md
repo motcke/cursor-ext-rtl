@@ -89,7 +89,7 @@ Click the status bar item for a quick-pick menu with available actions.
 
 The extension is published on [Open VSX](https://open-vsx.org/extension/motcke/cursor-rtl), which Cursor's built-in marketplace mirrors, so it installs and updates like any other extension. The **Open in Cursor** button at the top of this page jumps straight to the extension inside Cursor (GitHub strips the `cursor:` link scheme from README files, so the button goes through a small [redirect page](https://motcke.github.io/cursor-ext-rtl/open.html) on the documentation site).
 
-> **Note:** If Cursor is installed in a system directory (e.g. `C:\Program Files`), you may need to run Cursor as Administrator for the patch to apply.
+> **Note:** If Cursor is installed machine-wide (e.g. `C:\Program Files`), the first Enable hits a permission error that offers a **Fix permissions (Admin)** button. One UAC approval grants your user write access to the few patched files and the patch is applied right away; from then on everything, including re-patching after Cursor updates, runs without elevation. Running Cursor as Administrator once works too.
 
 <details>
 <summary>Manual install from a <code>.vsix</code> file</summary>
@@ -143,7 +143,7 @@ This restores the original `preload.js` and `product.json` from their backups an
 
 - In the session where the patch is applied (first enable, and again after each Cursor update, since the automatic re-patch happens mid-session) an "installation appears to be corrupt" notice may appear. Nothing is wrong: `preload.js` is in Cursor's integrity checksums and the checksum Cursor compares against is the one it read at startup. Click **Don't Show Again** once; Cursor remembers that across updates, so the notice does not return
 - The extension shows a "[Unsupported]" warning in Cursor's title bar (same as any extension that modifies app files, like Custom CSS extensions)
-- Requires write permissions to Cursor's app directory (may need Administrator/sudo on some systems)
+- Requires write permissions to Cursor's app directory. On Windows machine-wide installs the **Fix permissions (Admin)** button grants them with a single UAC approval; macOS/Linux may need `sudo`
 - Code editor RTL is a styling + input layer on top of Monaco, which has no native RTL mode. Visual order and arrow-key movement are corrected, but deeply mixed bidi lines can still have edge cases, and the line-number gutter stays on the left (moving it detaches Monaco's line-number positioning)
 - AI agent **extensions** that run inside Cursor (Claude Code, Codex, Gemini Code Assist, …) render in their own isolated webviews, which this extension does not touch. For RTL inside those panels see [rtl-for-vs-code-agents](https://github.com/GuyRonnen/rtl-for-vs-code-agents) — the two extensions cover different surfaces and can be installed side by side
 
@@ -187,7 +187,7 @@ Start with `Cursor RTL: Diagnostics` — it pinpoints the most common problems (
 
 | Issue | Solution |
 |-------|----------|
-| Permission denied | **Windows**: Run Cursor as Administrator. **macOS/Linux**: Fix file permissions with `sudo chown` |
+| Permission denied | **Windows**: click **Fix permissions (Admin)** on the error message — one UAC approval, and every later operation runs unelevated. Running Cursor as Administrator also works. **macOS/Linux**: Fix file permissions with `sudo chown` |
 | RTL not working after Enable | Reload the window (`Developer: Reload Window`); if that doesn't help, run Diagnostics |
 | Patch removed after update | Normally fixed automatically on the next startup. If not, run "Enable RTL / Fix After Update" |
 | "Installation appears to be corrupt" notice | Appears in the session where the patch was applied or re-applied, including after every Cursor update. Click **Don't Show Again** and it stays gone. Diagnostics shows whether the checksum on disk actually matches |

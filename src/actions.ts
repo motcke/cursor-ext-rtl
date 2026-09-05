@@ -38,6 +38,7 @@ export type InitOptions = {
     channel?: string;
     machineId?: string;
     installScope?: string;
+    installSource?: string;
     appName?: string;
     appRoot?: string;
     elevation?: string;
@@ -68,6 +69,7 @@ export function init(opts?: InitOptions): void {
         if (opts?.channel) extra.channel = opts.channel;
         if (opts?.machineId) extra.machineId = opts.machineId;
         if (opts?.installScope) extra.installScope = opts.installScope;
+        if (opts?.installSource) extra.installSource = opts.installSource;
         if (opts?.appName) extra.appName = opts.appName;
         if (opts?.appRoot) extra.appRoot = opts.appRoot;
         if (opts?.elevation) extra.elevation = opts.elevation;
@@ -75,6 +77,13 @@ export function init(opts?: InitOptions): void {
     } catch {
         // silent
     }
+}
+
+// Adds or replaces one property on every event sent from now on. Used for
+// values that are only known after activation (the async elevation probe).
+export function setCommonProperty(key: string, value: string): void {
+    if (!_client) return;
+    _client.commonProperties = { ...(_client.commonProperties ?? {}), [key]: value };
 }
 
 export function action(name: string, props?: Record<string, string>): void {

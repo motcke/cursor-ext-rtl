@@ -292,7 +292,7 @@ export function handlePermissionError(err: unknown): string {
     const code = (err as NodeJS.ErrnoException).code;
     if (code === 'EPERM' || code === 'EACCES') {
         if (process.platform === 'win32') {
-            return 'Permission denied. Try running Cursor as Administrator (right-click → Run as administrator).';
+            return 'Permission denied — Cursor is installed machine-wide. Use "Fix permissions (Admin)" for a one-time approval, or run Cursor as Administrator.';
         } else if (process.platform === 'darwin') {
             return 'Permission denied. Try running: sudo chown -R $USER Cursor.app/Contents/Resources/app/out/';
         } else {
