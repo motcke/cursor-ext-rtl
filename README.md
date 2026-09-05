@@ -125,7 +125,7 @@ For the code editor (Monaco) — the main editing pane, including Markdown and p
 - **Per-version backups**: Before any modification, `preload.js` is backed up as `preload.js.rtl-backup-<cursor version>`. `product.json` needs no backup — disabling recomputes the checksum of the restored `preload.js` in place
 - **File-shape verification**: The extension refuses to patch a `preload.js` that no longer looks like the Electron sandbox preload it expects
 - **Idempotent operations**: Enabling when already enabled does nothing; disabling when not enabled does nothing
-- **Transactional writes**: If patching fails mid-way, the backup is automatically restored
+- **Atomic writes**: every modified app file is written to a temp file and renamed into place, so no window ever reads a half-written `preload.js`; if patching fails mid-way, the backup is restored
 - **Reload-loop guard**: The automatic reload after a re-patch never fires twice for the same Cursor version within 10 minutes
 - **Dry-run preview**: Before enabling, you see exactly which files will be modified
 

@@ -18,6 +18,36 @@ import {
 const SOURCEMAP_ANCHOR = '//# sourceMappingURL=';
 const TAIL_CHECK_BYTES = 4096;
 
+// Every write to a Cursor app file goes through a temp file in the same
+// directory plus rename, so a reader never sees a half-written file. That
+// matters at startup after a Cursor update: several windows activate at once
+// and each may patch, and a window reading a truncated preload.js would
+// re-patch the truncated content and leave Cursor unable to open a window.
+// rename over a read-only or locked target fails (EPERM on Windows); the
+// temp file is removed and the error is rethrown so the permission flow
+// sees the same error code a direct write would have produced.
+function writeFileAtomic(filePath: string, data: string | Buffer): void {
+    const tmp = path.join(
+        path.dirname(filePath),
+        `.${path.basename(filePath)}.rtl-tmp-${process.pid}`
+    );
+    try {
+        fs.writeFileSync(tmp, data);
+        fs.renameSync(tmp, filePath);
+    } catch (err) {
+        try {
+            fs.rmSync(tmp, { force: true });
+        } catch {
+            // best-effort
+        }
+        throw err;
+    }
+}
+
+function copyFileAtomic(src: string, dest: string): void {
+    writeFileAtomic(dest, fs.readFileSync(src));
+}
+
 // The bootstrap block lives at the end of preload.js, so only the tail needs
 // to be read; this also keeps the check exact — a marker mentioned anywhere
 // else wouldn't count.
@@ -101,7 +131,7 @@ export function applyPatch(preloadJsPath: string, productVersion: string, rtlVer
             idx === -1
                 ? base + '\n' + block
                 : base.slice(0, idx) + block + base.slice(idx);
-        fs.writeFileSync(preloadJsPath, patched, 'utf-8');
+        writeFileAtomic(preloadJsPath, patched);
     } catch (err) {
         // Roll back only when the write actually landed partially — a failed
         // write (e.g. EPERM on a read-only file) leaves the file untouched,
@@ -112,7 +142,7 @@ export function applyPatch(preloadJsPath: string, productVersion: string, rtlVer
                 fs.existsSync(backupPath) &&
                 fs.readFileSync(preloadJsPath, 'utf-8') !== content
             ) {
-                fs.copyFileSync(backupPath, preloadJsPath);
+                copyFileAtomic(backupPath, preloadJsPath);
             }
         } catch (rollbackErr) {
             throw new Error(
@@ -131,11 +161,11 @@ export function removePatch(preloadJsPath: string, productVersion: string): void
     const exactBackup = path.join(dir, backupName(productVersion));
 
     if (fs.existsSync(exactBackup)) {
-        fs.copyFileSync(exactBackup, preloadJsPath);
+        copyFileAtomic(exactBackup, preloadJsPath);
     } else {
         const content = fs.readFileSync(preloadJsPath, 'utf-8');
         if (content.includes(PATCH_MARKER)) {
-            fs.writeFileSync(preloadJsPath, stripBootstrap(content), 'utf-8');
+            writeFileAtomic(preloadJsPath, stripBootstrap(content));
         }
     }
 
@@ -164,7 +194,7 @@ export function updateChecksum(productJsonPath: string, patchedFilePath: string)
         return;
     }
     product.checksums[CHECKSUM_KEY] = sha256Base64NoPad(patchedFilePath);
-    fs.writeFileSync(productJsonPath, JSON.stringify(product, null, '\t') + '\n', 'utf-8');
+    writeFileAtomic(productJsonPath, JSON.stringify(product, null, '\t') + '\n');
 }
 
 // Restores product.json's checksum on Disable by recomputing it from the
@@ -175,14 +205,14 @@ export function restoreChecksum(productJsonPath: string, patchedFilePath: string
 
     if (current.checksums && typeof current.checksums === 'object') {
         current.checksums[CHECKSUM_KEY] = sha256Base64NoPad(patchedFilePath);
-        fs.writeFileSync(productJsonPath, JSON.stringify(current, null, '\t') + '\n', 'utf-8');
+        writeFileAtomic(productJsonPath, JSON.stringify(current, null, '\t') + '\n');
     }
 }
 
 export function copyRtlScript(rtlDir: string, extensionPath: string): void {
     const src = path.join(extensionPath, 'resources', 'rtl.js');
     const dest = path.join(rtlDir, RTL_FILENAME);
-    fs.copyFileSync(src, dest);
+    copyFileAtomic(src, dest);
 }
 
 export function removeRtlFiles(rtlDir: string): void {
@@ -259,7 +289,7 @@ export function removeLegacyPatch(mainJsPath: string): void {
     })();
 
     if (backups.length > 0) {
-        fs.copyFileSync(path.join(dir, backups[backups.length - 1]), mainJsPath);
+        copyFileAtomic(path.join(dir, backups[backups.length - 1]), mainJsPath);
         for (const b of backups) {
             try {
                 fs.rmSync(path.join(dir, b));
@@ -274,7 +304,7 @@ export function removeLegacyPatch(mainJsPath: string): void {
                 .split('\n')
                 .filter((line) => !line.includes(LEGACY_MARKER))
                 .join('\n');
-            fs.writeFileSync(mainJsPath, stripped, 'utf-8');
+            writeFileAtomic(mainJsPath, stripped);
         }
     }
 
