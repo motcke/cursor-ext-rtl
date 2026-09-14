@@ -79,15 +79,25 @@ export function getInstalledBootstrapVersion(preloadJsPath: string): string | nu
     }
 }
 
-function backupName(productVersion: string): string {
-    return BACKUP_PREFIX + productVersion;
+// Derive the backup prefix from the actual filename so that preload.js and
+// preload-aux.js each keep their own set of backups without conflicts.
+// For preload.js this yields 'preload.js.rtl-backup-', which matches the
+// BACKUP_PREFIX constant and is therefore backward-compatible with existing
+// backups already on disk.
+function fileBackupPrefix(filePath: string): string {
+    return path.basename(filePath) + '.rtl-backup-';
 }
 
-function listBackups(dir: string): string[] {
+function backupName(filePath: string, productVersion: string): string {
+    return fileBackupPrefix(filePath) + productVersion;
+}
+
+function listBackups(dir: string, filePath: string): string[] {
+    const prefix = fileBackupPrefix(filePath);
     try {
         return fs
             .readdirSync(dir)
-            .filter((f) => f.startsWith(BACKUP_PREFIX))
+            .filter((f) => f.startsWith(prefix))
             .sort();
     } catch {
         return [];
@@ -112,13 +122,13 @@ export function applyPatch(preloadJsPath: string, productVersion: string, rtlVer
 
     if (!content.includes('electron')) {
         throw new Error(
-            'preload.js does not look like the expected Electron sandbox preload. ' +
+            `${path.basename(preloadJsPath)} does not look like the expected Electron sandbox preload. ` +
             'This Cursor version may be unsupported.'
         );
     }
 
     const dir = path.dirname(preloadJsPath);
-    const backupPath = path.join(dir, backupName(productVersion));
+    const backupPath = path.join(dir, backupName(preloadJsPath, productVersion));
     if (!fs.existsSync(backupPath) && !content.includes(PATCH_MARKER)) {
         fs.copyFileSync(preloadJsPath, backupPath);
     }
@@ -158,7 +168,7 @@ export function applyPatch(preloadJsPath: string, productVersion: string, rtlVer
 // version, fall back to stripping the bootstrap block.
 export function removePatch(preloadJsPath: string, productVersion: string): void {
     const dir = path.dirname(preloadJsPath);
-    const exactBackup = path.join(dir, backupName(productVersion));
+    const exactBackup = path.join(dir, backupName(preloadJsPath, productVersion));
 
     if (fs.existsSync(exactBackup)) {
         copyFileAtomic(exactBackup, preloadJsPath);
@@ -169,7 +179,7 @@ export function removePatch(preloadJsPath: string, productVersion: string): void
         }
     }
 
-    for (const b of listBackups(dir)) {
+    for (const b of listBackups(dir, preloadJsPath)) {
         try {
             fs.rmSync(path.join(dir, b));
         } catch {
@@ -249,8 +259,9 @@ export function getDryRunSummary(preloadJsPath: string, rtlDir: string): string[
         actions.push('RTL patch is already present in preload.js');
     } else {
         actions.push(`Backup preload.js → ${BACKUP_PREFIX}<cursor version>`);
-        actions.push('Append a small loader block to preload.js (loads the RTL script in every window)');
+        actions.push('Append a small loader block to preload.js (loads the RTL script in IDE windows)');
     }
+    actions.push('Append the same loader block to preload-aux.js (loads the RTL script in the Agents window)');
 
     const rtlDest = path.join(rtlDir, RTL_FILENAME);
     actions.push(`${fs.existsSync(rtlDest) ? 'Update' : 'Write'} RTL script: ${rtlDest}`);

@@ -24,8 +24,8 @@ export function getAppOutDir(): string {
     return candidate;
 }
 
-// The file we patch: the sandbox preload, read from disk by the main process
-// for every window (regular and Agents/glass alike) and on every reload.
+// The file we patch for regular IDE windows: the sandbox preload, read from
+// disk by the main process on every window open and every reload.
 export function getPreloadJsPath(): string {
     return path.join(
         getAppOutDir(),
@@ -35,6 +35,23 @@ export function getPreloadJsPath(): string {
         'sandbox',
         'electron-sandbox',
         'preload.js'
+    );
+}
+
+// The auxiliary preload used for supplemental windows — most importantly the
+// Agents window (the standalone background-agent UI). It receives only a
+// stripped-down contextBridge + ipcRenderer surface, not the full preload,
+// so the main preload.js patch does NOT cover it; we must patch this file
+// separately with the same bootstrap block.
+export function getPreloadAuxJsPath(): string {
+    return path.join(
+        getAppOutDir(),
+        'vs',
+        'base',
+        'parts',
+        'sandbox',
+        'electron-sandbox',
+        'preload-aux.js'
     );
 }
 

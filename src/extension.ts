@@ -6,6 +6,7 @@ import * as path from 'path';
 import {
     validatePaths,
     getPreloadJsPath,
+    getPreloadAuxJsPath,
     getRtlDir,
     getProductJsonPath,
     getConfigPath,
@@ -268,6 +269,15 @@ async function applyFullPatch(
     writeEditorConfig();
     applyPatch(preloadJsPath, productVersion, rtlVersion);
 
+    // Also patch the auxiliary preload used by the Agents window.
+    // Errors here are non-fatal: the main IDE windows will still have RTL;
+    // the Agents window will simply be skipped until the next enable/reload.
+    try {
+        applyPatch(getPreloadAuxJsPath(), productVersion, rtlVersion);
+    } catch (err) {
+        actionError(err, { op: 'patch_apply_aux' });
+    }
+
     try {
         updateChecksum(getProductJsonPath(), preloadJsPath);
     } catch (err) {
@@ -412,6 +422,12 @@ async function disableCommand(context: vscode.ExtensionContext): Promise<void> {
     const doRemove = async (): Promise<void> => {
         const preloadJsPath = validation.preloadJsPath;
         removePatch(preloadJsPath, getProductVersion());
+        // Also restore the auxiliary preload (Agents window). Best-effort.
+        try {
+            removePatch(getPreloadAuxJsPath(), getProductVersion());
+        } catch {
+            // non-critical
+        }
         try {
             restoreChecksum(getProductJsonPath(), preloadJsPath);
         } catch {
@@ -872,13 +888,20 @@ function refreshRtlScript(context: vscode.ExtensionContext): void {
         }
         const installedScript = getRtlScriptVersion(getRtlScriptDestPath());
         const installedBootstrap = getInstalledBootstrapVersion(getPreloadJsPath());
-        if (installedScript === bundled && installedBootstrap === bundled) {
+        const installedBootstrapAux = getInstalledBootstrapVersion(getPreloadAuxJsPath());
+        if (installedScript === bundled && installedBootstrap === bundled && installedBootstrapAux === bundled) {
             void context.globalState.update(REFRESH_WARNED_KEY, undefined);
             return;
         }
         copyRtlScript(getRtlDir(), context.extensionPath);
         const preloadJsPath = getPreloadJsPath();
         applyPatch(preloadJsPath, getProductVersion(), bundled);
+        // Also refresh the auxiliary preload (Agents window). Best-effort.
+        try {
+            applyPatch(getPreloadAuxJsPath(), getProductVersion(), bundled);
+        } catch {
+            // non-critical
+        }
         try {
             updateChecksum(getProductJsonPath(), preloadJsPath);
         } catch {

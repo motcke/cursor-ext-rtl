@@ -3,6 +3,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import {
     getPreloadJsPath,
+    getPreloadAuxJsPath,
     getProductJsonPath,
     getConfigPath,
     getMainJsPath,
@@ -14,7 +15,7 @@ import {
     sha256Base64NoPad,
     isLegacyPatched,
 } from './patcher';
-import { CHECKSUM_KEY, BACKUP_PREFIX, LEGACY_LOADER_FILENAME } from './constants';
+import { CHECKSUM_KEY, LEGACY_LOADER_FILENAME } from './constants';
 import { isMarketplaceInstall } from './updateChecker';
 import { action } from './actions';
 
@@ -35,6 +36,9 @@ interface DiagnosticsData {
     patched: boolean;
     preloadJsWritable: boolean | null;
     backups: string[];
+    preloadAuxJsPath: string;
+    preloadAuxJsExists: boolean;
+    auxPatched: boolean;
     productJsonPath: string;
     checksumInProduct: string | null;
     checksumActual: string | null;
@@ -49,11 +53,12 @@ interface DiagnosticsData {
     settings: Record<string, string>;
 }
 
-function listBackups(dir: string): string[] {
+function listBackupsForFile(dir: string, basename: string): string[] {
+    const prefix = basename + '.rtl-backup-';
     try {
         return fs
             .readdirSync(dir)
-            .filter((f) => f.startsWith(BACKUP_PREFIX))
+            .filter((f) => f.startsWith(prefix))
             .sort();
     } catch {
         return [];
@@ -63,6 +68,8 @@ function listBackups(dir: string): string[] {
 function collectData(context: vscode.ExtensionContext): DiagnosticsData {
     const preloadJsPath = getPreloadJsPath();
     const preloadJsExists = fs.existsSync(preloadJsPath);
+    const preloadAuxJsPath = getPreloadAuxJsPath();
+    const preloadAuxJsExists = fs.existsSync(preloadAuxJsPath);
 
     let preloadJsWritable: boolean | null = null;
     if (preloadJsExists) {
@@ -129,7 +136,10 @@ function collectData(context: vscode.ExtensionContext): DiagnosticsData {
         preloadJsExists,
         patched: preloadJsExists ? isPatched(preloadJsPath) : false,
         preloadJsWritable,
-        backups: preloadJsExists ? listBackups(path.dirname(preloadJsPath)) : [],
+        backups: preloadJsExists ? listBackupsForFile(path.dirname(preloadJsPath), 'preload.js') : [],
+        preloadAuxJsPath,
+        preloadAuxJsExists,
+        auxPatched: preloadAuxJsExists ? isPatched(preloadAuxJsPath) : false,
         productJsonPath,
         checksumInProduct,
         checksumActual,
@@ -166,6 +176,14 @@ function diagnose(d: DiagnosticsData): Finding[] {
             level: 'warn',
             text: 'The RTL patch is not applied to preload.js.',
             fix: 'Run "Cursor RTL: Enable RTL / Fix After Update". After a Cursor update this normally happens automatically on startup.',
+        });
+    }
+
+    if (d.patched && d.preloadAuxJsExists && !d.auxPatched) {
+        findings.push({
+            level: 'warn',
+            text: 'preload.js is patched but preload-aux.js (Agents window) is not — RTL will not work in the Agents window.',
+            fix: 'Run "Cursor RTL: Enable RTL / Fix After Update" to apply the patch to both files.',
         });
     }
 
@@ -224,7 +242,7 @@ function diagnose(d: DiagnosticsData): Finding[] {
     if (findings.length === 0) {
         findings.push({
             level: 'ok',
-            text: 'Everything looks healthy: preload.js is patched, the RTL script is current, and the checksum matches.',
+            text: 'Everything looks healthy: preload.js is patched, preload-aux.js (Agents window) is patched, the RTL script is current, and the checksum matches.',
             fix: 'If RTL still does not render, reload the window; if that does not help, open a GitHub issue with this report.',
         });
     }
@@ -273,9 +291,12 @@ function formatReport(d: DiagnosticsData, findings: Finding[]): string {
         '',
         `- preload.js: \`${d.preloadJsPath}\``,
         `- preload.js exists: ${yesNo(d.preloadJsExists)}`,
-        `- Patch applied: ${yesNo(d.patched)}`,
+        `- Patch applied (IDE windows): ${yesNo(d.patched)}`,
         `- preload.js writable: ${yesNo(d.preloadJsWritable)}`,
         `- Backups: ${d.backups.length}${d.backups.length > 0 ? ` (${d.backups.join(', ')})` : ''}`,
+        `- preload-aux.js: \`${d.preloadAuxJsPath}\``,
+        `- preload-aux.js exists: ${yesNo(d.preloadAuxJsExists)}`,
+        `- Patch applied (Agents window): ${yesNo(d.auxPatched)}`,
         `- RTL script: \`${d.installedRtlPath}\` (exists: ${yesNo(d.installedRtlExists)})`,
         '',
         '## Integrity checksum',
