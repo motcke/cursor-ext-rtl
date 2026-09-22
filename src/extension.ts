@@ -18,6 +18,7 @@ import {
     removePatch,
     updateChecksum,
     restoreChecksum,
+    checksumMatches,
     copyRtlScript,
     removeRtlFiles,
     getRtlScriptVersion,
@@ -900,6 +901,22 @@ function refreshRtlScript(context: vscode.ExtensionContext): void {
     }
 }
 
+// A checksum write that failed when the patch went on (locked product.json,
+// see writeFileAtomic) would otherwise leave Cursor's "installation appears
+// to be corrupt" warning on every launch. Retry it quietly on each start
+// while the patch is on; diagnostics still report a persistent mismatch.
+function repairChecksum(preloadJsPath: string): void {
+    try {
+        if (checksumMatches(getProductJsonPath(), preloadJsPath)) {
+            return;
+        }
+        updateChecksum(getProductJsonPath(), preloadJsPath);
+        action('checksum_repair');
+    } catch (err) {
+        actionError(err, { op: 'checksum_repair' });
+    }
+}
+
 // Startup flow (plan §3.6).
 async function runStartupFlow(context: vscode.ExtensionContext): Promise<void> {
     await runLegacyMigration(context);
@@ -912,6 +929,7 @@ async function runStartupFlow(context: vscode.ExtensionContext): Promise<void> {
 
     if (isPatched(validation.preloadJsPath)) {
         refreshRtlScript(context);
+        repairChecksum(validation.preloadJsPath);
         writeEditorConfig();
         updateStatusBar('on');
         return;

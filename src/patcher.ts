@@ -26,19 +26,57 @@ const TAIL_CHECK_BYTES = 4096;
 // rename over a read-only or locked target fails (EPERM on Windows); the
 // temp file is removed and the error is rethrown so the permission flow
 // sees the same error code a direct write would have produced.
-function writeFileAtomic(filePath: string, data: string | Buffer): void {
+//
+// A target that another process merely has open for reading also fails the
+// rename with EPERM, but only while that handle is open. Cursor 3.21 holds
+// product.json that way for about a second during startup, right when the
+// extension activates. Those get a few short retries before the error is
+// treated as a real permission problem; callers whose file can tolerate an
+// in-place write (product.json is read once, at boot) may fall back to it,
+// which Windows allows even while the file is open for reading.
+const RENAME_RETRY_DELAYS_MS = [50, 100, 200, 400];
+
+function sleepSync(ms: number): void {
+    Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
+}
+
+function renameWithRetry(from: string, to: string): void {
+    for (let attempt = 0; ; attempt++) {
+        try {
+            fs.renameSync(from, to);
+            return;
+        } catch (err) {
+            const code = (err as NodeJS.ErrnoException).code;
+            const transient = code === 'EPERM' || code === 'EBUSY' || code === 'EACCES';
+            if (!transient || attempt >= RENAME_RETRY_DELAYS_MS.length) {
+                throw err;
+            }
+            sleepSync(RENAME_RETRY_DELAYS_MS[attempt]);
+        }
+    }
+}
+
+function writeFileAtomic(
+    filePath: string,
+    data: string | Buffer,
+    { fallbackToInPlaceWrite = false }: { fallbackToInPlaceWrite?: boolean } = {}
+): void {
     const tmp = path.join(
         path.dirname(filePath),
         `.${path.basename(filePath)}.rtl-tmp-${process.pid}`
     );
     try {
         fs.writeFileSync(tmp, data);
-        fs.renameSync(tmp, filePath);
+        renameWithRetry(tmp, filePath);
     } catch (err) {
         try {
             fs.rmSync(tmp, { force: true });
         } catch {
             // best-effort
+        }
+        if (fallbackToInPlaceWrite && (err as NodeJS.ErrnoException).code === 'EPERM') {
+            fs.writeFileSync(filePath, data);
+            return;
         }
         throw err;
     }
@@ -194,7 +232,25 @@ export function updateChecksum(productJsonPath: string, patchedFilePath: string)
         return;
     }
     product.checksums[CHECKSUM_KEY] = sha256Base64NoPad(patchedFilePath);
-    writeFileAtomic(productJsonPath, JSON.stringify(product, null, '\t') + '\n');
+    writeFileAtomic(productJsonPath, JSON.stringify(product, null, '\t') + '\n', {
+        fallbackToInPlaceWrite: true,
+    });
+}
+
+// True when product.json has no checksum entry to disagree with, or the entry
+// matches preload.js on disk. Unreadable files count as matching: there is
+// nothing to repair from here.
+export function checksumMatches(productJsonPath: string, preloadJsPath: string): boolean {
+    try {
+        const product = JSON.parse(fs.readFileSync(productJsonPath, 'utf-8'));
+        const expected = product.checksums?.[CHECKSUM_KEY];
+        if (typeof expected !== 'string') {
+            return true;
+        }
+        return expected === sha256Base64NoPad(preloadJsPath);
+    } catch {
+        return true;
+    }
 }
 
 // Restores product.json's checksum on Disable by recomputing it from the
@@ -205,7 +261,9 @@ export function restoreChecksum(productJsonPath: string, patchedFilePath: string
 
     if (current.checksums && typeof current.checksums === 'object') {
         current.checksums[CHECKSUM_KEY] = sha256Base64NoPad(patchedFilePath);
-        writeFileAtomic(productJsonPath, JSON.stringify(current, null, '\t') + '\n');
+        writeFileAtomic(productJsonPath, JSON.stringify(current, null, '\t') + '\n', {
+            fallbackToInPlaceWrite: true,
+        });
     }
 }
 

@@ -611,6 +611,72 @@ export function readStartupMark(pageInspection) {
     return mark ? mark.startTime : null;
 }
 
+// Mixed Hebrew/English assistant reply (issue #18). A live model reply is
+// not reproducible, so the captured 3.21 markup is built inside the window
+// and the runtime is asked to scan it; the assertions are on the resulting
+// dir attributes and on where the Latin "OK" of sentence C lands: with a
+// correct RTL base direction it sits at the right edge, before the Hebrew.
+// Returns { failed: [...], dirs: {...}, screenshot } — the fixture element is
+// removed afterwards.
+export async function checkMixedTextFixture(page, outDir) {
+    const { MIXED_HE_EN_TREE, MIXED_HE_EN_EXPECTED } = await import('./fixtures/mixed-he-en.mjs');
+    const result = await page.evaluate(async (tree) => {
+        const build = (node) => {
+            if (typeof node === 'string') return document.createTextNode(node);
+            const [tag, attrs, ...children] = node;
+            const el = document.createElement(tag);
+            for (const [k, v] of Object.entries(attrs ?? {})) el.setAttribute(k, v);
+            for (const child of children) el.appendChild(build(child));
+            return el;
+        };
+        const host = document.createElement('div');
+        host.setAttribute('data-cursor-rtl-e2e-host', 'mixed-he-en');
+        host.style.cssText = 'position:fixed;top:40px;left:40px;width:520px;padding:12px;z-index:100000;background:#1e1e1e;color:#ccc;font-size:13px;';
+        host.appendChild(build(tree));
+        (document.querySelector('.monaco-workbench') ?? document.body).appendChild(host);
+        if (typeof window.__cursorRtlScanAll === 'function') window.__cursorRtlScanAll();
+        await new Promise((r) => setTimeout(r, 800));
+
+        const dirs = {};
+        for (const el of host.querySelectorAll('[data-e2e]')) {
+            dirs[el.getAttribute('data-e2e')] = el.getAttribute('dir');
+        }
+        const c = host.querySelector('[data-e2e="C"]');
+        const text = c.firstChild;
+        const rangeOf = (needle) => {
+            const i = text.data.indexOf(needle);
+            const r = document.createRange();
+            r.setStart(text, i);
+            r.setEnd(text, i + needle.length);
+            return r.getBoundingClientRect();
+        };
+        const ok = rangeOf('OK');
+        const hebrew = rangeOf('תתקן');
+        const box = host.getBoundingClientRect();
+        return {
+            dirs,
+            okRightOfHebrew: ok.left >= hebrew.right - 1,
+            box: { x: box.x, y: box.y, width: box.width, height: box.height },
+        };
+    }, MIXED_HE_EN_TREE);
+
+    let screenshot = null;
+    if (outDir) {
+        fs.mkdirSync(outDir, { recursive: true });
+        screenshot = path.join(outDir, 'mixed-he-en.png');
+        const b = result.box;
+        await page.screenshot({ path: screenshot, clip: { x: b.x, y: b.y, width: b.width, height: b.height }, scale: 'css' });
+    }
+    await page.evaluate(() => document.querySelector('[data-cursor-rtl-e2e-host]')?.remove());
+
+    const failed = [];
+    for (const [key, dir] of Object.entries(MIXED_HE_EN_EXPECTED)) {
+        if (result.dirs[key] !== dir) failed.push(`mixed:${key}=${result.dirs[key] ?? 'none'}≠${dir}`);
+    }
+    if (!result.okRightOfHebrew) failed.push('mixed:C-OK-not-at-right');
+    return { failed, dirs: result.dirs, screenshot };
+}
+
 // --- visual comparison (same mechanism as visual-cursor-compare.mjs) -----
 
 export async function compareScenario(scenario, { approve = false, threshold = 0.02 } = {}) {

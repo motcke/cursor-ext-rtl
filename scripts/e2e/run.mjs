@@ -23,6 +23,7 @@ import {
     clickDialogButton, clickNotificationButton, getRtlState, openChatPane,
     typeInComposer, openHebrewChatFromHistory, captureScreens, writeInspection,
     closeAllEditorTabs, resetAutoReloadGuard, execCommand, compareScenario,
+    checkMixedTextFixture,
 } from './lib.mjs';
 
 const argv = process.argv.slice(2);
@@ -320,7 +321,12 @@ async function scnAgentsWindow() {
     fs.rmSync(dir, { recursive: true, force: true });
     await setWindowBounds(browser, page);
     const shots = await captureScreens(page, dir, ['agents']);
-    await writeInspection(page, dir, { title });
+    // Mixed HE/EN assistant markup must get per-block direction here too
+    // (issue #18 reported the Agents window specifically).
+    const mixed = await checkMixedTextFixture(page, dir);
+    failed.push(...mixed.failed);
+    shots.mixed = mixed.screenshot;
+    await writeInspection(page, dir, { title, mixedDirs: mixed.dirs });
     await browser.close();
     killLabCursor();
     record('agents-window', failed.length === 0 ? 'pass' : 'fail', failed.join(', '), Object.values(shots).filter(Boolean));
@@ -353,7 +359,11 @@ async function scnSecondWindow() {
     const dir = actualDir('second-window');
     fs.rmSync(dir, { recursive: true, force: true });
     const shots = await captureScreens(secondPage, dir, ['full']);
-    await writeInspection(secondPage, dir);
+    // Same mixed HE/EN check as agents-window, in a regular IDE window.
+    const mixed = await checkMixedTextFixture(secondPage, dir);
+    failed.push(...mixed.failed);
+    shots.mixed = mixed.screenshot;
+    await writeInspection(secondPage, dir, { mixedDirs: mixed.dirs });
     await browser.close();
     killLabCursor();
     record('second-window', failed.length === 0 ? 'pass' : 'fail', failed.join(', '), Object.values(shots).filter(Boolean));
