@@ -46,6 +46,7 @@ import {
     dispose as disposeActions,
 } from './actions';
 import { LEGACY_LOADER_FILENAME } from './constants';
+import { isAgentsWindowOpen, restartCursor } from './restart';
 
 let statusBarItem: vscode.StatusBarItem;
 let blinkInterval: ReturnType<typeof setInterval> | undefined;
@@ -180,51 +181,132 @@ async function showQuickPick(): Promise<void> {
 
 type EditorRtlMode = 'auto' | 'always' | 'off';
 
+function toEditorRtlMode(value: unknown): EditorRtlMode | null {
+    return value === 'auto' || value === 'always' || value === 'off' ? value : null;
+}
+
 function getEditorRtlMode(): EditorRtlMode {
     const value = vscode.workspace
         .getConfiguration('cursorRtl')
         .get<string>('editorRtl', 'auto');
-    return value === 'always' || value === 'off' ? value : 'auto';
+    return toEditorRtlMode(value) ?? 'auto';
 }
 
-// Persist the editor-RTL mode where the injected renderer script can fetch
-// it (out/vs/workbench/cursor-rtl-config.json). rtl.js polls this file, so
-// changes apply live without a reload.
+// cursorRtl.editorRtlByLanguage: { languageId: mode }. Keys are lowercased
+// (language IDs are) and invalid values dropped.
+function getEditorRtlByLanguage(): Record<string, EditorRtlMode> {
+    const raw = vscode.workspace
+        .getConfiguration('cursorRtl')
+        .get<Record<string, unknown>>('editorRtlByLanguage', {});
+    const result: Record<string, EditorRtlMode> = {};
+    for (const [lang, value] of Object.entries(raw ?? {})) {
+        const mode = toEditorRtlMode(value);
+        const key = lang.trim().toLowerCase();
+        if (mode && key) {
+            result[key] = mode;
+        }
+    }
+    return result;
+}
+
+// Persist the editor-RTL modes where the injected renderer script can fetch
+// them (out/vs/workbench/cursor-rtl-config.json). rtl.js polls this file, so
+// changes apply live without a reload. The renderer resolves each editor's
+// mode from its language: editorRtlByLanguage first, then editorRtl.
 function writeEditorConfig(): void {
     try {
         fs.writeFileSync(
             getConfigPath(),
-            JSON.stringify({ editorRtl: getEditorRtlMode() })
+            JSON.stringify({
+                editorRtl: getEditorRtlMode(),
+                editorRtlByLanguage: getEditorRtlByLanguage(),
+            })
         );
     } catch {
         // Non-critical: rtl.js defaults to 'auto' when the file is absent.
     }
 }
 
+const EDITOR_MODE_LABELS: Record<EditorRtlMode, { icon: string; label: string }> = {
+    auto: { icon: '$(sparkle)', label: 'Auto' },
+    always: { icon: '$(arrow-right)', label: 'Always RTL' },
+    off: { icon: '$(circle-slash)', label: 'Off' },
+};
+
+interface EditorRtlPick extends vscode.QuickPickItem {
+    mode?: EditorRtlMode | 'default';
+    languageId?: string;
+}
+
+// One list: the three global modes, then (when a file is open) the same
+// choices for the current file's language only, so a per-language override
+// never needs settings.json.
 async function setEditorRtlCommand(): Promise<void> {
     const current = getEditorRtlMode();
-    const options: Array<{ label: string; description: string; mode: EditorRtlMode }> = [
-        { label: '$(sparkle) Auto', description: "Follow each file's dominant language", mode: 'auto' },
-        { label: '$(arrow-right) Always RTL', description: 'Force every code editor right-to-left', mode: 'always' },
-        { label: '$(circle-slash) Off', description: "Never change the code editor's direction", mode: 'off' },
+    const byLanguage = getEditorRtlByLanguage();
+    const languageId = vscode.window.activeTextEditor?.document.languageId;
+    const languageMode = languageId ? byLanguage[languageId] : undefined;
+
+    const items: EditorRtlPick[] = [
+        { label: 'All files', kind: vscode.QuickPickItemKind.Separator },
+        { ...modeItem('auto', "Follow each file's dominant language", current), mode: 'auto' },
+        { ...modeItem('always', 'Force every code editor right-to-left', current), mode: 'always' },
+        { ...modeItem('off', "Never change the code editor's direction", current), mode: 'off' },
     ];
+    if (languageId) {
+        items.push(
+            { label: `Only "${languageId}" files`, kind: vscode.QuickPickItemKind.Separator },
+            { ...modeItem('auto', `Auto for ${languageId} files`, languageMode), mode: 'auto', languageId },
+            { ...modeItem('always', `Always RTL for ${languageId} files`, languageMode), mode: 'always', languageId },
+            { ...modeItem('off', `Off for ${languageId} files`, languageMode), mode: 'off', languageId },
+        );
+        if (languageMode) {
+            items.push({
+                label: '$(discard) Same as all files',
+                description: `Remove the ${languageId} setting`,
+                mode: 'default',
+                languageId,
+            });
+        }
+    }
 
-    const picked = await vscode.window.showQuickPick(
-        options.map((item) => ({
-            ...item,
-            label: item.mode === current ? `${item.label} $(check)` : item.label,
-        })),
-        { placeHolder: `Code editor RTL direction (current: ${current})` }
-    );
-
-    if (!picked) {
+    const picked = await vscode.window.showQuickPick(items, {
+        placeHolder: languageMode
+            ? `Code editor RTL direction (all files: ${current}, ${languageId}: ${languageMode})`
+            : `Code editor RTL direction (current: ${current})`,
+    });
+    if (!picked?.mode) {
         return;
     }
 
-    await vscode.workspace
-        .getConfiguration('cursorRtl')
-        .update('editorRtl', picked.mode, vscode.ConfigurationTarget.Global);
-    action('editor_rtl_set', { mode: picked.mode });
+    const config = vscode.workspace.getConfiguration('cursorRtl');
+    if (picked.languageId) {
+        const next: Record<string, string> = { ...byLanguage };
+        if (picked.mode === 'default') {
+            delete next[picked.languageId];
+        } else {
+            next[picked.languageId] = picked.mode;
+        }
+        await config.update('editorRtlByLanguage', next, vscode.ConfigurationTarget.Global);
+        action('editor_rtl_language_set', { language: picked.languageId, mode: picked.mode });
+        return;
+    }
+    if (picked.mode !== 'default') {
+        await config.update('editorRtl', picked.mode, vscode.ConfigurationTarget.Global);
+        action('editor_rtl_set', { mode: picked.mode });
+    }
+}
+
+function modeItem(
+    mode: EditorRtlMode,
+    description: string,
+    current: EditorRtlMode | undefined
+): vscode.QuickPickItem {
+    const { icon, label } = EDITOR_MODE_LABELS[mode];
+    return {
+        label: `${icon} ${label}${mode === current ? ' $(check)' : ''}`,
+        description,
+    };
 }
 
 async function offerReload(message: string): Promise<void> {
@@ -288,6 +370,15 @@ async function applyFullPatch(
     const config = vscode.workspace.getConfiguration('cursorRtl');
     const autoReload = config.get<boolean>('autoReloadAfterPatch', true);
 
+    if (autoReloadAllowed(context, productVersion) && (await isAgentsWindowOpen(context))) {
+        await context.globalState.update(LAST_AUTO_RELOAD_KEY, {
+            cursorVersion: productVersion,
+            time: Date.now(),
+        } satisfies LastAutoReload);
+        await offerRestartForAgentsWindow(context, { auto });
+        return;
+    }
+
     if (autoReload && autoReloadAllowed(context, productVersion)) {
         await context.globalState.update(LAST_AUTO_RELOAD_KEY, {
             cursorVersion: productVersion,
@@ -308,6 +399,44 @@ async function applyFullPatch(
     }
 }
 
+const RESTART_BUTTON = 'Restart Cursor';
+const RELOAD_THIS_WINDOW_BUTTON = 'Reload This Window Only';
+
+// An Agents window is open while the patch just went on. It started without
+// the RTL runtime and only a restart of Cursor reaches it (see restart.ts), so
+// ask in a modal instead of reloading this window behind the user's back.
+async function offerRestartForAgentsWindow(
+    context: vscode.ExtensionContext,
+    { auto }: { auto: boolean }
+): Promise<void> {
+    const choice = await vscode.window.showInformationMessage(
+        auto
+            ? 'Cursor RTL was re-applied after a Cursor update. Restart Cursor to turn it on in the Agents window too.'
+            : 'Cursor RTL is on. Restart Cursor to turn it on in the Agents window too.',
+        {
+            modal: true,
+            detail:
+                'The Agents window was opened before RTL was applied, and Cursor offers no way ' +
+                'to refresh it from here. Restarting closes and reopens all Cursor windows; ' +
+                'agents running on this computer will stop. Cloud agents keep running. ' +
+                'Cursor may ask you to confirm quitting.',
+        },
+        RESTART_BUTTON,
+        RELOAD_THIS_WINDOW_BUTTON
+    );
+    action('agents_window_restart_prompt', { choice: choice ?? 'dismissed', auto: String(auto) });
+    if (choice === RESTART_BUTTON) {
+        if (!(await restartCursor(context))) {
+            await vscode.window.showWarningMessage(
+                'Cursor RTL: Could not restart Cursor automatically. Quit Cursor and open it again.',
+                { modal: true }
+            );
+        }
+    } else if (choice === RELOAD_THIS_WINDOW_BUTTON) {
+        await vscode.commands.executeCommand('workbench.action.reloadWindow');
+    }
+}
+
 const FIX_PERMISSIONS_BUTTON = 'Fix permissions (Admin)';
 
 // Runs the one-time elevated ACL grant (elevate.ts) behind a UAC prompt and,
@@ -323,7 +452,7 @@ async function runPermissionFix(retry: () => Promise<void>): Promise<void> {
             await retry();
         } catch (err) {
             actionError(err, { op: 'elevation_retry' });
-            vscode.window.showErrorMessage(`Cursor RTL: ${handlePermissionError(err)}`);
+            vscode.window.showErrorMessage(`Cursor RTL: ${handlePermissionError(err, vscode.env.appRoot)}`);
         }
     } else if (result === 'cancelled') {
         vscode.window.showInformationMessage(
@@ -387,7 +516,7 @@ async function enableCommand(context: vscode.ExtensionContext): Promise<void> {
         actionError(err, { op: firstTime ? 'patch_apply' : 'patch_reapply' });
         await showErrorWithPermissionFix(
             err,
-            `Cursor RTL: ${handlePermissionError(err)}`,
+            `Cursor RTL: ${handlePermissionError(err, vscode.env.appRoot)}`,
             () => applyFullPatch(context, { firstTime, auto: false })
         );
     }
@@ -432,7 +561,7 @@ async function disableCommand(context: vscode.ExtensionContext): Promise<void> {
         actionError(err, { op: 'patch_remove' });
         await showErrorWithPermissionFix(
             err,
-            `Cursor RTL: ${handlePermissionError(err)}`,
+            `Cursor RTL: ${handlePermissionError(err, vscode.env.appRoot)}`,
             doRemove
         );
     }
@@ -849,7 +978,7 @@ function warnRefreshFailed(
     void vscode.window
         .showWarningMessage(
             `Cursor RTL: Updating the injected RTL script to ${bundled} failed. ` +
-            `${handlePermissionError(err)} ` +
+            `${handlePermissionError(err, vscode.env.appRoot)} ` +
             'RTL keeps working with the previously installed version.',
             ...buttons
         )
@@ -963,7 +1092,7 @@ async function runStartupFlow(context: vscode.ExtensionContext): Promise<void> {
                 ? [FIX_PERMISSIONS_BUTTON, 'Retry']
                 : ['Retry'];
         const choice = await vscode.window.showWarningMessage(
-            `Cursor RTL: Re-applying the patch after a Cursor update failed. ${handlePermissionError(err)}`,
+            `Cursor RTL: Re-applying the patch after a Cursor update failed. ${handlePermissionError(err, vscode.env.appRoot)}`,
             ...buttons
         );
         if (choice === FIX_PERMISSIONS_BUTTON) {
@@ -1094,7 +1223,10 @@ export function activate(context: vscode.ExtensionContext): { extendMarkdownIt(m
         ) {
             scheduleExtensionUpdateChecks(context);
         }
-        if (e.affectsConfiguration('cursorRtl.editorRtl')) {
+        if (
+            e.affectsConfiguration('cursorRtl.editorRtl') ||
+            e.affectsConfiguration('cursorRtl.editorRtlByLanguage')
+        ) {
             writeEditorConfig();
         }
         if (e.affectsConfiguration('cursorRtl.markdownPreview')) {

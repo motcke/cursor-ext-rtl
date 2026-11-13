@@ -18,7 +18,7 @@
 // "[Cursor RTL] bootstrap failed: ... TrustedScriptURL" (or "Policy
 // already exists") and RTL stays off despite the patch being applied.
 // Fix: pick another name from the current allowlist in workbench.html and
-// update it here (and in scripts/lab/spike.mjs). Details: plan §5.
+// update it here. Details: plan §5.
 export function buildBootstrap(rtlVersion: string): string {
     return `
 ;(function(){/* cursor-rtl-injected v=${rtlVersion} */

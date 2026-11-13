@@ -2,7 +2,7 @@
   "name": "cursor-rtl",
   "displayName": "Cursor RTL",
   "description": "Smart multi-language RTL support for Cursor AI Chat. Uses a purpose-built algorithm that auto-detects text direction per element - Hebrew, Arabic and Persian text is right-aligned while English stays left-aligned.",
-  "version": "2.0.0",
+  "version": "2.1.0",
   "publisher": "motcke",
   "license": "Apache-2.0",
   "icon": "resources/icon.png",
@@ -73,7 +73,25 @@
             "Never change the code editor's direction"
           ],
           "default": "auto",
-          "description": "Right-to-left direction for the code editor — the main editing pane, including Markdown and plain-text files (Monaco). Applies live to open windows; no reload needed."
+          "description": "Right-to-left direction for the code editor — the main editing pane, including Markdown and plain-text files (Monaco). Applies live to open windows; no reload needed. To set a different direction for one file type, use Editor Rtl By Language below."
+        },
+        "cursorRtl.editorRtlByLanguage": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string",
+            "enum": [
+              "auto",
+              "always",
+              "off"
+            ],
+            "enumDescriptions": [
+              "Follow the file's dominant language",
+              "Always right-to-left",
+              "Never change the direction"
+            ]
+          },
+          "default": {},
+          "markdownDescription": "Code editor direction for specific file types, overriding `#cursorRtl.editorRtl#`. Item: the language ID (`markdown`, `plaintext`, `typescript`, `prisma`...; shown in the status bar's language picker). Value: `auto`, `always` or `off`. Example: keep code files `off` and add `markdown` → `always`. The **Cursor RTL: Set Editor RTL** command can add the current file's language for you."
         },
         "cursorRtl.markdownPreview": {
           "type": "boolean",
@@ -115,8 +133,7 @@
     "visual:compare": "node scripts/visual-cursor-compare.mjs",
     "visual:approve": "node scripts/visual-cursor-compare.mjs --update-baseline",
     "visual": "npm run visual:capture && npm run visual:compare",
-    "e2e": "node scripts/e2e/run.mjs",
-    "e2e:approve": "node scripts/e2e/run.mjs --approve"
+    "e2e": "node scripts/e2e/run.mjs"
   },
   "devDependencies": {
     "@types/node": "^20.0.0",

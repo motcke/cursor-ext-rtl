@@ -1,7 +1,7 @@
 // Machine-readable version marker, compared by the extension between its
 // bundled copy and the installed cursor-rtl.js to detect a needed refresh.
 // Keep the exact `var RTL_VERSION = "x.y.z"` form — it is parsed by regex.
-var RTL_VERSION = "2.0.0";
+var RTL_VERSION = "2.1.0";
 
 function __cursorRtlMain() {
     var RTL_LOG = "[Cursor RTL]";
@@ -287,7 +287,7 @@ function __cursorRtlMain() {
         .user-questionnaire-question-text[dir="rtl"] .markdown-root {
             direction: rtl !important;
             text-align: start !important;
-            unicode-bidi: plaintext !important;
+            unicode-bidi: isolate !important;
         }
 
         .composer-ask-question-tool-call-block,
@@ -344,7 +344,7 @@ function __cursorRtlMain() {
         .ui-prompt-input-header-tray__tray[dir="rtl"] .ui-tray {
             direction: rtl !important;
             text-align: start !important;
-            unicode-bidi: plaintext !important;
+            unicode-bidi: isolate !important;
         }
 
         .ui-tray[dir="rtl"] .ui-tray-step__title,
@@ -353,12 +353,19 @@ function __cursorRtlMain() {
             max-width: 100% !important;
         }
 
+        /* The step counter: in an RTL paragraph the bidi algorithm shows
+           "1 of 3" as "of 3 1". Cursor 3.26 moved it to the footer. */
         .ui-tray[dir="rtl"] .ui-tray-header__counter,
-        .ui-tray[dir="rtl"] .ui-tray-header__stepper {
+        .ui-tray[dir="rtl"] .ui-tray-header__stepper,
+        .ui-tray[dir="rtl"] .ui-tray-footer__tertiary {
             direction: ltr !important;
             unicode-bidi: isolate !important;
         }
 
+        /* Once the scanner has set dir, these rules use isolate, not
+           plaintext: plaintext takes the base direction from the first
+           strong character, so an RTL option that starts with an English
+           word ("Cursor נשאר...") would be laid out LTR (issue #19). */
         .ui-tray-option[dir="ltr"],
         .ui-tray-option[dir="ltr"] .ui-tray-option__label,
         .ui-tray-option[dir="ltr"] .ui-tray-option__badge,
@@ -367,7 +374,7 @@ function __cursorRtlMain() {
         .composer-questionnaire-toolbar-option[dir="ltr"] .composer-questionnaire-toolbar-option-letter {
             direction: ltr !important;
             text-align: start !important;
-            unicode-bidi: plaintext !important;
+            unicode-bidi: isolate !important;
         }
 
         .ui-tray-option[dir="rtl"],
@@ -378,21 +385,25 @@ function __cursorRtlMain() {
         .composer-questionnaire-toolbar-option[dir="rtl"] .composer-questionnaire-toolbar-option-letter {
             direction: rtl !important;
             text-align: start !important;
-            unicode-bidi: plaintext !important;
+            unicode-bidi: isolate !important;
         }
 
         .ui-tray-option__label[dir="ltr"],
-        .composer-questionnaire-toolbar-option-label[dir="ltr"] {
+        .composer-questionnaire-toolbar-option-label[dir="ltr"],
+        .composer-questionnaire-toolbar-question-label[dir="ltr"],
+        .ui-tray-step__title[dir="ltr"] {
             direction: ltr !important;
             text-align: start !important;
-            unicode-bidi: plaintext !important;
+            unicode-bidi: isolate !important;
         }
 
         .ui-tray-option__label[dir="rtl"],
-        .composer-questionnaire-toolbar-option-label[dir="rtl"] {
+        .composer-questionnaire-toolbar-option-label[dir="rtl"],
+        .composer-questionnaire-toolbar-question-label[dir="rtl"],
+        .ui-tray-step__title[dir="rtl"] {
             direction: rtl !important;
             text-align: start !important;
-            unicode-bidi: plaintext !important;
+            unicode-bidi: isolate !important;
         }
 
         .plan-todos-section[dir="rtl"],
@@ -845,6 +856,9 @@ function __cursorRtlMain() {
     /* Hebrew, Arabic (incl. supplement/extended/presentation forms), Syriac
        (0700-074F), Thaana (0780-07BF), N'Ko (07C0-07FF). */
     var RTL_TEXT = /[\u0590-\u05FF\u0600-\u06FF\u0700-\u074F\u0750-\u077F\u0780-\u07BF\u07C0-\u07FF\u0870-\u089F\u08A0-\u08FF\uFB1D-\uFB4F\uFB50-\uFDFF\uFE70-\uFEFE]/g;
+    /* A run of RTL characters: one Hebrew/Arabic word. A prefix joined by a
+       hyphen ("\u05D4-API") counts as its own word. */
+    var RTL_WORD = new RegExp(RTL_TEXT.source + '+', 'g');
     var LTR_TEXT = /[A-Za-z]/g;
 
     function isExcludedMutation(mutation) {
@@ -934,14 +948,19 @@ function __cursorRtlMain() {
         return 1;
     }
 
+    /* Both sides are counted in words. Each Hebrew/Arabic word scores 2 against
+       1 for an English word (less for code-like tokens), so a Hebrew sentence
+       full of technical terms stays RTL. Counting RTL letters instead made a
+       two-word Hebrew or Arabic tail outweigh a whole English sentence
+       (issue #18). */
     function getTextDir(text) {
         var value = text || '';
-        var rtlRuns = getMatches(value, RTL_TEXT);
+        var rtlWords = getMatches(value, RTL_WORD);
         var ltrTokens = getMatches(value, /[A-Za-z][A-Za-z0-9._/\\:-]*/g);
-        if (rtlRuns.length === 0) return 'ltr';
+        if (rtlWords.length === 0) return 'ltr';
         if (ltrTokens.length === 0) return 'rtl';
 
-        var rtlScore = rtlRuns.length * 1.5;
+        var rtlScore = rtlWords.length * 2;
         var ltrScore = 0;
         for (var i = 0; i < ltrTokens.length; i++) {
             ltrScore += getLtrTokenWeight(ltrTokens[i]);
@@ -1239,6 +1258,9 @@ function __cursorRtlMain() {
 
     var EDITOR_LINE_SAMPLE = 80;
     var editorMode = 'auto';
+    /* languageId -> mode, from cursorRtl.editorRtlByLanguage; overrides
+       editorMode for editors showing that language (issue #20). */
+    var editorModeByLanguage = {};
     try {
         if (window.__cursorRtlConfig && typeof window.__cursorRtlConfig.editorRtl === 'string') {
             editorMode = window.__cursorRtlConfig.editorRtl;
@@ -1247,6 +1269,35 @@ function __cursorRtlMain() {
 
     function normalizeEditorMode(mode) {
         return (mode === 'auto' || mode === 'always' || mode === 'off') ? mode : 'auto';
+    }
+
+    function normalizeModeMap(map) {
+        var out = {};
+        if (!map || typeof map !== 'object') return out;
+        for (var lang in map) {
+            if (!Object.prototype.hasOwnProperty.call(map, lang)) continue;
+            var mode = map[lang];
+            if (mode === 'auto' || mode === 'always' || mode === 'off') {
+                out[String(lang).toLowerCase()] = mode;
+            }
+        }
+        return out;
+    }
+
+    /* Monaco's editor group marks the shown file's language with
+       data-mode-id on an ancestor of .monaco-editor. */
+    function getEditorLanguage(editor) {
+        var host = editor.closest('[data-mode-id]');
+        var id = host ? host.getAttribute('data-mode-id') : null;
+        return id ? id.toLowerCase() : null;
+    }
+
+    function getModeForEditor(editor) {
+        var lang = getEditorLanguage(editor);
+        if (lang && Object.prototype.hasOwnProperty.call(editorModeByLanguage, lang)) {
+            return editorModeByLanguage[lang];
+        }
+        return normalizeEditorMode(editorMode);
     }
 
     function isFileEditor(editor) {
@@ -1278,11 +1329,11 @@ function __cursorRtlMain() {
     }
 
     function applyEditorDir() {
-        var mode = normalizeEditorMode(editorMode);
         var editors = document.querySelectorAll('.monaco-editor');
         for (var i = 0; i < editors.length; i++) {
             var editor = editors[i];
             try {
+                var mode = getModeForEditor(editor);
                 if (mode === 'off' || !isFileEditor(editor)) {
                     setEditorDir(editor, 'ltr');
                     continue;
@@ -1293,9 +1344,12 @@ function __cursorRtlMain() {
         }
     }
 
-    window.__cursorRtlSetEditorMode = function(mode) {
+    window.__cursorRtlSetEditorMode = function(mode, byLanguage) {
         editorMode = normalizeEditorMode(mode);
-        console.log(RTL_LOG, 'editor RTL mode:', editorMode);
+        if (byLanguage !== undefined) {
+            editorModeByLanguage = normalizeModeMap(byLanguage);
+        }
+        console.log(RTL_LOG, 'editor RTL mode:', editorMode, JSON.stringify(editorModeByLanguage));
         scanAll();
         return editorMode;
     };
@@ -1315,8 +1369,10 @@ function __cursorRtlMain() {
                 .then(function(cfg) {
                     if (!cfg || typeof cfg.editorRtl !== 'string') return;
                     var next = normalizeEditorMode(cfg.editorRtl);
-                    if (next !== editorMode) {
-                        window.__cursorRtlSetEditorMode(next);
+                    var nextMap = normalizeModeMap(cfg.editorRtlByLanguage);
+                    if (next !== editorMode ||
+                        JSON.stringify(nextMap) !== JSON.stringify(editorModeByLanguage)) {
+                        window.__cursorRtlSetEditorMode(next, nextMap);
                     }
                 })
                 .catch(function() {});

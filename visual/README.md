@@ -4,7 +4,7 @@ These checks attach to a running Cursor window through Chrome DevTools Protocol 
 
 There are two suites:
 
-- **e2e lab suite** (`npm run e2e`, baselines under `visual/baseline/<scenario>/`) — drives the isolated Cursor copy in `C:\cursor-rtl-lab` through ten scenarios (install, Cursor update, Agents window, disable, permissions, startup timing and more) and compares screenshots per scenario. `npm run e2e:approve` accepts the current actuals as baseline. Requires `node scripts/lab/setup.mjs` once. See `docs/renderer-injection-plan.md` §7.
+- **e2e lab suite** (`npm run e2e`) — drives the isolated Cursor copy in `C:\cursor-rtl-lab` through eleven scenarios (install, Cursor update, Agents window and restart, editor modes, disable, permissions, startup timing and more) and asserts on files, DOM state and text positions. Screenshots land in `visual/actual/<scenario>/` for review only; they are not compared against a baseline, since one goes stale with every Cursor release. A slow startup is reported as `WARN`, not a failure. Requires `node scripts/lab/setup.mjs` once. See `docs/renderer-injection-plan.md` §7.
 - **legacy single-shot capture** (`npm run visual`, below) — captures whatever real Cursor window is listening on CDP port 9222.
 
 ## Privacy Notice

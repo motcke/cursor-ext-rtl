@@ -6,7 +6,7 @@
 //   node scripts/lab/probe-chat-dom.mjs [--glass] [--keep]
 import fs from 'node:fs';
 import path from 'node:path';
-import { launchAndConnect, waitForRtlOn, waitForWorkbenchDom, sleep, killLabCursor, openChatPane, openHebrewChatFromHistory, closeAllEditorTabs, setWindowBounds, LAB } from '../e2e/lib.mjs';
+import { launchAndConnect, waitForRtlOn, waitForWorkbenchDom, sleep, killLabCursor, openChatPane, closeAllEditorTabs, setWindowBounds, LAB } from '../e2e/lib.mjs';
 
 const glass = process.argv.includes('--glass');
 const OUT = path.join(LAB, 'probe');
@@ -37,8 +37,6 @@ if (!glass) {
     await sleep(1000);
     await page.keyboard.press('Escape');
     await sleep(500);
-    console.log('history:', await openHebrewChatFromHistory(page));
-    await sleep(3000);
 }
 const dump = await page.evaluate(() => {
     const rtl = /[֐-׿]/;

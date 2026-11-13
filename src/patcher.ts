@@ -376,13 +376,27 @@ export function removeLegacyPatch(mainJsPath: string): void {
     }
 }
 
-export function handlePermissionError(err: unknown): string {
+// appRoot: Cursor's resources/app folder (vscode.env.appRoot). The extension
+// writes both under out/ and to product.json next to it, so a permission fix
+// has to cover the whole folder.
+export function handlePermissionError(err: unknown, appRoot?: string): string {
     const code = (err as NodeJS.ErrnoException).code;
+    if (code === 'EROFS') {
+        // macOS runs an app straight from Downloads or a disk image from a
+        // read-only copy (App Translocation); an AppImage is mounted read-only.
+        if (process.platform === 'darwin') {
+            return 'Cursor is running from a read-only location (for example straight from Downloads or the disk image). Move Cursor.app to the Applications folder, open it from there, and run "Enable RTL / Fix After Update" again.';
+        }
+        return process.platform === 'linux'
+            ? 'Cursor\'s app folder is read-only, so RTL cannot be applied to this installation (an AppImage, for example, is mounted read-only).'
+            : 'Cursor\'s app folder is read-only, so RTL cannot be applied to this installation.';
+    }
     if (code === 'EPERM' || code === 'EACCES') {
         if (process.platform === 'win32') {
             return 'Permission denied — Cursor is installed machine-wide. Use "Fix permissions (Admin)" for a one-time approval, or run Cursor as Administrator.';
         } else if (process.platform === 'darwin') {
-            return 'Permission denied. Try running: sudo chown -R $USER Cursor.app/Contents/Resources/app/out/';
+            const folder = appRoot ?? '/Applications/Cursor.app/Contents/Resources/app';
+            return `Permission denied. In Terminal, run: sudo chown -R "$USER" "${folder}" — then run "Enable RTL / Fix After Update" again.`;
         } else {
             return 'Permission denied. Try running Cursor with elevated privileges or fixing file permissions.';
         }

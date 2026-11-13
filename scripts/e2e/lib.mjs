@@ -493,47 +493,24 @@ export async function openChatPane(page) {
     return visible();
 }
 
+// The chat input. Since 3.26 sent user messages reuse the same editor classes
+// inside a read-only wrapper and come first in the DOM, so a plain class
+// selector lands on the last user message instead of the input.
+const COMPOSER_INPUT = ['.aislash-editor-input', '.ui-prompt-input-editor__input']
+    .map((c) => `${c}:not([class*="readonly"] *)`)
+    .join(', ');
+
 // Types Hebrew into the chat composer WITHOUT sending. Returns false when no
 // composer input could be found (e.g. chat pane missing).
 export async function typeInComposer(page, text = HEBREW_COMPOSER_TEXT) {
     await dismissQuickInput(page);
-    const inputSelector = '.aislash-editor-input, .ui-prompt-input-editor__input [contenteditable="true"], .ui-prompt-input-editor__input, .aislash-editor-input [contenteditable="true"]';
-    const handle = await page.$(inputSelector);
+    const handle = await page.$(COMPOSER_INPUT);
     if (!handle) return false;
     await handle.click({ timeout: 10_000 }).catch(() => {});
     await sleep(300);
     await page.keyboard.type(text, { delay: 10 });
     await sleep(1_000);
     return true;
-}
-
-// Opens the first Hebrew conversation from the chat history. Depends on the
-// manually-created chat fixture; returns 'pending' while it doesn't exist.
-export async function openHebrewChatFromHistory(page) {
-    try {
-        await runPaletteCommand(page, 'Show Chat History');
-        await sleep(1_500);
-        const opened = await page.evaluate(() => {
-            const items = Array.from(
-                document.querySelectorAll('.compact-agent-history-react-menu-label, .quick-input-list .monaco-list-row')
-            );
-            const rtl = /[\u0590-\u05FF]/;
-            const target = items.find((el) => rtl.test(el.textContent || ''));
-            if (target) {
-                target.click();
-                return true;
-            }
-            return false;
-        });
-        if (opened) {
-            await sleep(2_000);
-            return 'ok';
-        }
-        await page.keyboard.press('Escape');
-        return 'pending';
-    } catch {
-        return 'pending';
-    }
 }
 
 async function clipOf(page, selector) {
@@ -567,7 +544,7 @@ export async function captureScreens(page, outDir, which = ['full', 'chat-pane',
             }
             const selector = {
                 'chat-pane': '[id="workbench.panel.aichat"], .pane-composite-part.auxiliarybar, .part.auxiliarybar',
-                composer: '.aislash-editor-input, .ui-prompt-input-editor__input',
+                composer: COMPOSER_INPUT,
                 editor: '.editor-group-container .monaco-editor',
                 preview: '.webview.ready, .markdown-preview',
             }[name];
@@ -614,13 +591,14 @@ export function readStartupMark(pageInspection) {
 // Mixed Hebrew/English assistant reply (issue #18). A live model reply is
 // not reproducible, so the captured 3.21 markup is built inside the window
 // and the runtime is asked to scan it; the assertions are on the resulting
-// dir attributes and on where the Latin "OK" of sentence C lands: with a
-// correct RTL base direction it sits at the right edge, before the Hebrew.
+// dir attributes and on where the opening Latin word of an RTL block lands
+// ("OK" in C, "isOnline" in the Arabic C): with a correct RTL base direction
+// it sits at the right edge, before the Hebrew or Arabic text.
 // Returns { failed: [...], dirs: {...}, screenshot } — the fixture element is
 // removed afterwards.
 export async function checkMixedTextFixture(page, outDir) {
-    const { MIXED_HE_EN_TREE, MIXED_HE_EN_EXPECTED } = await import('./fixtures/mixed-he-en.mjs');
-    const result = await page.evaluate(async (tree) => {
+    const { MIXED_HE_EN_TREE, MIXED_HE_EN_EXPECTED, LATIN_FIRST_RTL } = await import('./fixtures/mixed-he-en.mjs');
+    const result = await page.evaluate(async ([tree, latinFirst]) => {
         const build = (node) => {
             if (typeof node === 'string') return document.createTextNode(node);
             const [tag, attrs, ...children] = node;
@@ -633,7 +611,10 @@ export async function checkMixedTextFixture(page, outDir) {
         host.setAttribute('data-cursor-rtl-e2e-host', 'mixed-he-en');
         host.style.cssText = 'position:fixed;top:40px;left:40px;width:520px;padding:12px;z-index:100000;background:#1e1e1e;color:#ccc;font-size:13px;';
         host.appendChild(build(tree));
-        (document.querySelector('.monaco-workbench') ?? document.body).appendChild(host);
+        // body, not .monaco-workbench: right after launch the Agents window's
+        // first .monaco-workbench is the hidden IDE one (0x0), which made the
+        // fixture screenshot fail with a zero-width clip on Cursor 3.26.
+        document.body.appendChild(host);
         if (typeof window.__cursorRtlScanAll === 'function') window.__cursorRtlScanAll();
         await new Promise((r) => setTimeout(r, 800));
 
@@ -641,24 +622,25 @@ export async function checkMixedTextFixture(page, outDir) {
         for (const el of host.querySelectorAll('[data-e2e]')) {
             dirs[el.getAttribute('data-e2e')] = el.getAttribute('dir');
         }
-        const c = host.querySelector('[data-e2e="C"]');
-        const text = c.firstChild;
-        const rangeOf = (needle) => {
-            const i = text.data.indexOf(needle);
-            const r = document.createRange();
-            r.setStart(text, i);
-            r.setEnd(text, i + needle.length);
-            return r.getBoundingClientRect();
-        };
-        const ok = rangeOf('OK');
-        const hebrew = rangeOf('תתקן');
+        const latinNotAtRight = [];
+        for (const [key, latin, rtlWord] of latinFirst) {
+            const text = host.querySelector(`[data-e2e="${key}"]`).firstChild;
+            const rangeOf = (needle) => {
+                const i = text.data.indexOf(needle);
+                const r = document.createRange();
+                r.setStart(text, i);
+                r.setEnd(text, i + needle.length);
+                return r.getBoundingClientRect();
+            };
+            if (rangeOf(latin).left < rangeOf(rtlWord).right - 1) latinNotAtRight.push(key);
+        }
         const box = host.getBoundingClientRect();
         return {
             dirs,
-            okRightOfHebrew: ok.left >= hebrew.right - 1,
+            latinNotAtRight,
             box: { x: box.x, y: box.y, width: box.width, height: box.height },
         };
-    }, MIXED_HE_EN_TREE);
+    }, [MIXED_HE_EN_TREE, LATIN_FIRST_RTL]);
 
     let screenshot = null;
     if (outDir) {
@@ -673,54 +655,79 @@ export async function checkMixedTextFixture(page, outDir) {
     for (const [key, dir] of Object.entries(MIXED_HE_EN_EXPECTED)) {
         if (result.dirs[key] !== dir) failed.push(`mixed:${key}=${result.dirs[key] ?? 'none'}≠${dir}`);
     }
-    if (!result.okRightOfHebrew) failed.push('mixed:C-OK-not-at-right');
+    for (const key of result.latinNotAtRight) failed.push(`mixed:${key}-latin-not-at-right`);
     return { failed, dirs: result.dirs, screenshot };
 }
 
-// --- visual comparison (same mechanism as visual-cursor-compare.mjs) -----
+// Ask-question tool (issue #19): the captured 3.26 composer toolbar (IDE)
+// and tray (Agents window) are built side by side and scanned. Every
+// question and option must be rtl, its first word (English in most of them)
+// must be the rightmost word, and the tray counter must read "1 of 3".
+// Returns { failed: [...], dirs: {...}, screenshot }.
+export async function checkQuestionnaireFixture(page, outDir) {
+    const { TOOLBAR_TREE, TRAY_TREE, QUESTIONNAIRE_EXPECTED_RTL } = await import('./fixtures/questionnaire.mjs');
+    const result = await page.evaluate(async (trees) => {
+        const build = (node) => {
+            if (typeof node === 'string') return document.createTextNode(node);
+            const [tag, attrs, ...children] = node;
+            const el = document.createElement(tag);
+            for (const [k, v] of Object.entries(attrs ?? {})) el.setAttribute(k, v);
+            for (const child of children) el.appendChild(build(child));
+            return el;
+        };
+        const host = document.createElement('div');
+        host.setAttribute('data-cursor-rtl-e2e-host', 'questionnaire');
+        host.style.cssText = 'position:fixed;top:40px;left:40px;width:420px;padding:12px;z-index:100000;background:#1e1e1e;color:#ccc;font-size:13px;display:flex;flex-direction:column;gap:16px;';
+        for (const tree of trees) host.appendChild(build(tree));
+        document.body.appendChild(host);
+        if (typeof window.__cursorRtlScanAll === 'function') window.__cursorRtlScanAll();
+        await new Promise((r) => setTimeout(r, 800));
 
-export async function compareScenario(scenario, { approve = false, threshold = 0.02 } = {}) {
-    const { PNG } = await import('pngjs');
-    const { default: pixelmatch } = await import('pixelmatch');
-
-    const actualDir = path.join(VISUAL_DIR, 'actual', scenario);
-    const baselineDir = path.join(VISUAL_DIR, 'baseline', scenario);
-    const diffDir = path.join(VISUAL_DIR, 'diff', scenario);
-
-    if (!fs.existsSync(actualDir)) {
-        return { status: 'no-actuals' };
-    }
-    const actuals = fs.readdirSync(actualDir).filter((f) => f.endsWith('.png'));
-
-    if (approve || !fs.existsSync(baselineDir)) {
-        fs.mkdirSync(baselineDir, { recursive: true });
-        for (const f of actuals) {
-            fs.copyFileSync(path.join(actualDir, f), path.join(baselineDir, f));
+        const firstWordAtRight = {};
+        const dirs = {};
+        for (const el of host.querySelectorAll('[data-e2e]')) {
+            const key = el.getAttribute('data-e2e');
+            dirs[key] = el.getAttribute('dir');
+            if (key === 'tray-counter') continue;
+            const text = el.firstChild;
+            const rights = [];
+            for (const m of text.data.matchAll(/\S+/g)) {
+                const r = document.createRange();
+                r.setStart(text, m.index);
+                r.setEnd(text, m.index + m[0].length);
+                rights.push(r.getBoundingClientRect().right);
+            }
+            firstWordAtRight[key] = rights[0] >= Math.max(...rights) - 1;
         }
-        return { status: 'baseline-created', files: actuals };
-    }
+        const counter = host.querySelector('[data-e2e="tray-counter"]');
+        const lefts = Array.from(counter.childNodes).map((node) => {
+            const r = document.createRange();
+            r.selectNodeContents(node);
+            return r.getBoundingClientRect().left;
+        });
+        const box = host.getBoundingClientRect();
+        return {
+            dirs,
+            firstWordAtRight,
+            counterInOrder: lefts[0] < lefts[1] && lefts[1] < lefts[2],
+            box: { x: box.x, y: box.y, width: box.width, height: box.height },
+        };
+    }, [TOOLBAR_TREE, TRAY_TREE]);
 
-    const results = [];
-    for (const f of actuals) {
-        const baselinePath = path.join(baselineDir, f);
-        if (!fs.existsSync(baselinePath)) {
-            fs.copyFileSync(path.join(actualDir, f), baselinePath);
-            results.push({ file: f, status: 'baseline-created' });
-            continue;
-        }
-        const baseline = PNG.sync.read(fs.readFileSync(baselinePath));
-        const actual = PNG.sync.read(fs.readFileSync(path.join(actualDir, f)));
-        if (baseline.width !== actual.width || baseline.height !== actual.height) {
-            results.push({ file: f, status: 'size-mismatch' });
-            continue;
-        }
-        const diff = new PNG({ width: baseline.width, height: baseline.height });
-        const differentPixels = pixelmatch(baseline.data, actual.data, diff.data, baseline.width, baseline.height, { threshold: 0.1 });
-        const ratio = differentPixels / (baseline.width * baseline.height);
-        fs.mkdirSync(diffDir, { recursive: true });
-        fs.writeFileSync(path.join(diffDir, f), PNG.sync.write(diff));
-        results.push({ file: f, status: ratio <= threshold ? 'pass' : 'fail', ratio });
+    let screenshot = null;
+    if (outDir) {
+        fs.mkdirSync(outDir, { recursive: true });
+        screenshot = path.join(outDir, 'questionnaire.png');
+        const b = result.box;
+        await page.screenshot({ path: screenshot, clip: { x: b.x, y: b.y, width: b.width, height: b.height }, scale: 'css' });
     }
-    const failed = results.filter((r) => r.status === 'fail' || r.status === 'size-mismatch');
-    return { status: failed.length > 0 ? 'visual-diff' : 'pass', results };
+    await page.evaluate(() => document.querySelector('[data-cursor-rtl-e2e-host]')?.remove());
+
+    const failed = [];
+    for (const key of QUESTIONNAIRE_EXPECTED_RTL) {
+        if (result.dirs[key] !== 'rtl') failed.push(`question:${key}=${result.dirs[key] ?? 'none'}≠rtl`);
+        if (!result.firstWordAtRight[key]) failed.push(`question:${key}-first-word-not-at-right`);
+    }
+    if (!result.counterInOrder) failed.push('question:tray-counter-reordered');
+    return { failed, dirs: result.dirs, screenshot };
 }

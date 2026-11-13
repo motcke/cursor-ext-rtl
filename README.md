@@ -73,6 +73,7 @@ Click the status bar item for a quick-pick menu with available actions.
 | Setting | Default | Description |
 |---------|---------|-------------|
 | `cursorRtl.editorRtl` | `auto` | Code editor (Monaco) direction — the main editing pane, including Markdown and plain-text files. `auto` follows each file's dominant language, `always` forces RTL, `off` leaves the editor untouched. Applies live to open windows |
+| `cursorRtl.editorRtlByLanguage` | `{}` | The same choice for specific file types, overriding `cursorRtl.editorRtl`. In Settings, add an item per language ID (`markdown`, `plaintext`, `typescript`, `prisma`...) and pick `auto`, `always` or `off`. Example: `editorRtl` set to `off` and `markdown` → `always` keeps code LTR and Markdown RTL. **Cursor RTL: Set Editor RTL** offers the current file's language directly |
 | `cursorRtl.markdownPreview` | `true` | Per-block RTL in the built-in Markdown preview (paragraphs, headings, lists, table cells follow their dominant language). Open previews refresh when this changes |
 | `cursorRtl.autoReloadAfterPatch` | `true` | After the patch is re-applied (e.g. following a Cursor update), reload the window automatically. When off, you get a Reload prompt instead |
 | `cursorRtl.showStatusBar` | `true` | Show RTL status indicator in the status bar |
@@ -114,7 +115,7 @@ The bootstrap runs in the preload's isolated world and injects a `<script src="c
 
 Inside the workbench, `rtl.js` does an initial scan at startup, a few delayed startup scans while Cursor finishes rendering, and then re-scans on relevant DOM mutations, focus changes, and visibility changes. It is not a continuous polling loop.
 
-The direction algorithm assigns an explicit `dir="rtl"` or `dir="ltr"` to matching Markdown, chat and composer elements. For mixed text, RTL characters are scored against weighted LTR tokens; code-like tokens such as paths, API names and uppercase identifiers count less than regular English words. Lists and tables use the majority direction of their direct items or cells.
+The direction algorithm assigns an explicit `dir="rtl"` or `dir="ltr"` to matching Markdown, chat and composer elements. For mixed text, both sides are counted in words: each Hebrew/Arabic word scores 2 and each English word 1, while code-like tokens such as paths, API names and uppercase identifiers count less than regular English words. Lists and tables use the majority direction of their direct items or cells.
 
 Plan files and the Agents Window side Plan view use Cursor's TipTap/ProseMirror rich-text editor. Because that editor owns and may rewrite its DOM, Plan content also gets generated CSS rules scoped to the active Plan editor instead of relying only on direct `dir` attributes.
 
@@ -141,6 +142,7 @@ This restores the original `preload.js` and `product.json` from their backups an
 ## Known Limitations
 
 - In the session where the patch is applied (first enable, and again after each Cursor update, since the automatic re-patch happens mid-session) an "installation appears to be corrupt" notice may appear. Nothing is wrong: `preload.js` is in Cursor's integrity checksums and the checksum Cursor compares against is the one it read at startup. Click **Don't Show Again** once; Cursor remembers that across updates, so the notice does not return
+- Cursor runs only its own extensions in the Agents window, so this extension runs in regular (IDE) windows only. After a Cursor update it re-applies the patch the next time a regular window opens. If an Agents window is already open at that point, it started without RTL; the extension asks to restart Cursor, which is the only way to reach that window. If you work only in the Agents window, open a regular window once after each Cursor update (**File > New Window**)
 - The extension shows a "[Unsupported]" warning in Cursor's title bar (same as any extension that modifies app files, like Custom CSS extensions)
 - Requires write permissions to Cursor's app directory. On Windows machine-wide installs the **Fix permissions (Admin)** button grants them with a single UAC approval; macOS/Linux may need `sudo`
 - Code editor RTL is a styling + input layer on top of Monaco, which has no native RTL mode. Visual order and arrow-key movement are corrected, but deeply mixed bidi lines can still have edge cases, and the line-number gutter stays on the left (moving it detaches Monaco's line-number positioning)
@@ -148,7 +150,7 @@ This restores the original `preload.js` and `product.json` from their backups an
 
 ## Supported Cursor Versions
 
-Developed and verified against Cursor 3.16.x. Older versions back to 2.4.x should work as long as their `preload.js` keeps the same structure; the extension refuses to patch a file it doesn't recognize.
+Verified against Cursor 3.30.8 (Windows), the full e2e suite included. Older versions back to 2.4.x should work as long as their `preload.js` keeps the same structure; the extension refuses to patch a file it doesn't recognize.
 
 ## Development
 
@@ -186,9 +188,11 @@ Start with `Cursor RTL: Diagnostics` — it pinpoints the most common problems (
 
 | Issue | Solution |
 |-------|----------|
-| Permission denied | **Windows**: click **Fix permissions (Admin)** on the error message — one UAC approval, and every later operation runs unelevated. Running Cursor as Administrator also works. **macOS/Linux**: Fix file permissions with `sudo chown` |
+| Permission denied | **Windows**: click **Fix permissions (Admin)** on the error message — one UAC approval, and every later operation runs unelevated. Running Cursor as Administrator also works. **macOS**: run `sudo chown -R "$USER" /Applications/Cursor.app/Contents/Resources/app` in Terminal (the error message shows the exact folder), then run "Enable RTL / Fix After Update". **Linux**: fix the permissions of Cursor's `resources/app` folder with `sudo chown` |
+| "Cursor is running from a read-only location" (macOS) | Cursor was opened straight from Downloads or from the disk image, and macOS runs it from a read-only copy. Move Cursor.app to the Applications folder, open it from there, and run "Enable RTL / Fix After Update" |
 | RTL not working after Enable | Reload the window (`Developer: Reload Window`); if that doesn't help, run Diagnostics |
 | Patch removed after update | Normally fixed automatically on the next startup. If not, run "Enable RTL / Fix After Update" |
+| No RTL in the Agents window after a Cursor update | Open a regular window (**File > New Window**) so the extension can re-apply the patch, then choose **Restart Cursor** when asked |
 | "Installation appears to be corrupt" notice | Appears in the session where the patch was applied or re-applied, including after every Cursor update. Click **Don't Show Again** and it stays gone. Diagnostics shows whether the checksum on disk actually matches |
 | Cursor won't start | Run "Disable RTL Support" or manually restore `preload.js` from the `preload.js.rtl-backup-*` file next to it |
 

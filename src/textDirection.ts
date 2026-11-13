@@ -6,6 +6,9 @@
 const RTL_TEXT =
     /[֐-׿؀-ۿ܀-ݏݐ-ݿހ-޿߀-߿ࡰ-࢟ࢠ-ࣿיִ-ﭏﭐ-﷿ﹰ-﻾]/g;
 
+// A run of RTL characters: one Hebrew/Arabic word.
+const RTL_WORD = new RegExp(RTL_TEXT.source + '+', 'g');
+
 const LTR_TOKEN = /[A-Za-z][A-Za-z0-9._/\\:-]*/g;
 
 export type TextDir = 'ltr' | 'rtl';
@@ -19,14 +22,16 @@ function getLtrTokenWeight(token: string): number {
     return 1;
 }
 
+// Both sides are counted in words: each Hebrew/Arabic word scores 2, each
+// English word 1 (less for code-like tokens).
 export function getTextDir(text: string): TextDir {
     const value = text || '';
-    const rtlRuns = value.match(RTL_TEXT) || [];
+    const rtlWords = value.match(RTL_WORD) || [];
     const ltrTokens = value.match(LTR_TOKEN) || [];
-    if (rtlRuns.length === 0) return 'ltr';
+    if (rtlWords.length === 0) return 'ltr';
     if (ltrTokens.length === 0) return 'rtl';
 
-    const rtlScore = rtlRuns.length * 1.5;
+    const rtlScore = rtlWords.length * 2;
     let ltrScore = 0;
     for (const token of ltrTokens) {
         ltrScore += getLtrTokenWeight(token);
