@@ -73,7 +73,7 @@
             "Never change the code editor's direction"
           ],
           "default": "auto",
-          "description": "Right-to-left direction for the code editor — the main editing pane, including Markdown and plain-text files (Monaco). Applies live to open windows; no reload needed. To set a different direction for some files, use Editor Rtl By File below."
+          "description": "Right-to-left direction for the code editor \u2014 the main editing pane, including Markdown and plain-text files (Monaco). Applies live to open windows; no reload needed. To set a different direction for some files, use Editor Rtl By File below."
         },
         "cursorRtl.editorRtlByFile": {
           "type": "object",
@@ -108,7 +108,7 @@
               }
             }
           ],
-          "markdownDescription": "Code editor direction for files whose name matches a pattern, overriding `#cursorRtl.editorRtl#`.\n\n**Item:** a file name pattern. `*` matches any characters, `?` matches one. Only the file name is matched, not its folder, and case is ignored. Examples: `*.md`, `*.prisma`, `CHANGELOG.md`, `Dockerfile`.\n\n**Value:** `auto`, `always` or `off`.\n\nWhen several patterns match a file, the most specific wins: `CHANGELOG.md` beats `*.md`. Example: set Editor Rtl to `off` and add `*.md` → `always` to keep code LTR and Markdown RTL. The **Cursor RTL: Code Editor Direction** command adds a rule for the open file's type."
+          "markdownDescription": "Code editor direction for files whose name matches a pattern, overriding `#cursorRtl.editorRtl#`.\n\n**Item:** a file name pattern. `*` matches any characters, `?` matches one. Only the file name is matched, not its folder, and case is ignored. Examples: `*.md`, `*.prisma`, `CHANGELOG.md`, `Dockerfile`.\n\n**Value:** `auto`, `always` or `off`.\n\nWhen several patterns match a file, the most specific wins: `CHANGELOG.md` beats `*.md`. Example: set Editor Rtl to `off` and add `*.md` \u2192 `always` to keep code LTR and Markdown RTL. The **Cursor RTL: Code Editor Direction** command adds a rule for the open file's type."
         },
         "cursorRtl.editorRtlByLanguage": {
           "type": "object",
@@ -183,5 +183,10 @@
   },
   "dependencies": {
     "applicationinsights": "^3.14.0"
+  },
+  "overrides": {
+    "@opentelemetry/sdk-node": {
+      "@opentelemetry/propagator-jaeger": "2.9.0"
+    }
   }
 }
