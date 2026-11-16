@@ -2,7 +2,7 @@
   "name": "cursor-rtl",
   "displayName": "Cursor RTL",
   "description": "Smart multi-language RTL support for Cursor AI Chat. Uses a purpose-built algorithm that auto-detects text direction per element - Hebrew, Arabic and Persian text is right-aligned while English stays left-aligned.",
-  "version": "2.1.0",
+  "version": "2.2.0",
   "publisher": "motcke",
   "license": "Apache-2.0",
   "icon": "resources/icon.png",
@@ -73,9 +73,9 @@
             "Never change the code editor's direction"
           ],
           "default": "auto",
-          "description": "Right-to-left direction for the code editor — the main editing pane, including Markdown and plain-text files (Monaco). Applies live to open windows; no reload needed. To set a different direction for one file type, use Editor Rtl By Language below."
+          "description": "Right-to-left direction for the code editor — the main editing pane, including Markdown and plain-text files (Monaco). Applies live to open windows; no reload needed. To set a different direction for some files, use Editor Rtl By File below."
         },
-        "cursorRtl.editorRtlByLanguage": {
+        "cursorRtl.editorRtlByFile": {
           "type": "object",
           "additionalProperties": {
             "type": "string",
@@ -91,7 +91,43 @@
             ]
           },
           "default": {},
-          "markdownDescription": "Code editor direction for specific file types, overriding `#cursorRtl.editorRtl#`. Item: the language ID (`markdown`, `plaintext`, `typescript`, `prisma`...; shown in the status bar's language picker). Value: `auto`, `always` or `off`. Example: keep code files `off` and add `markdown` → `always`. The **Cursor RTL: Set Editor RTL** command can add the current file's language for you."
+          "defaultSnippets": [
+            {
+              "label": "Markdown and text RTL",
+              "description": "Markdown and .txt files always right-to-left",
+              "body": {
+                "*.md": "always",
+                "*.txt": "always"
+              }
+            },
+            {
+              "label": "Keep one file type LTR",
+              "description": "Never change the direction of .prisma files",
+              "body": {
+                "*.prisma": "off"
+              }
+            }
+          ],
+          "markdownDescription": "Code editor direction for files whose name matches a pattern, overriding `#cursorRtl.editorRtl#`.\n\n**Item:** a file name pattern. `*` matches any characters, `?` matches one. Only the file name is matched, not its folder, and case is ignored. Examples: `*.md`, `*.prisma`, `CHANGELOG.md`, `Dockerfile`.\n\n**Value:** `auto`, `always` or `off`.\n\nWhen several patterns match a file, the most specific wins: `CHANGELOG.md` beats `*.md`. Example: set Editor Rtl to `off` and add `*.md` → `always` to keep code LTR and Markdown RTL. The **Cursor RTL: Code Editor Direction** command adds a rule for the open file's type."
+        },
+        "cursorRtl.editorRtlByLanguage": {
+          "type": "object",
+          "markdownDeprecationMessage": "Replaced by `#cursorRtl.editorRtlByFile#`, which matches file names (`*.md`) instead of language IDs. Entries here are moved there automatically.",
+          "additionalProperties": {
+            "type": "string",
+            "enum": [
+              "auto",
+              "always",
+              "off"
+            ],
+            "enumDescriptions": [
+              "Follow the file's dominant language",
+              "Always right-to-left",
+              "Never change the direction"
+            ]
+          },
+          "default": {},
+          "markdownDescription": "Replaced in 2.2.0 by `#cursorRtl.editorRtlByFile#`."
         },
         "cursorRtl.markdownPreview": {
           "type": "boolean",

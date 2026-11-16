@@ -1,7 +1,7 @@
 // Machine-readable version marker, compared by the extension between its
 // bundled copy and the installed cursor-rtl.js to detect a needed refresh.
 // Keep the exact `var RTL_VERSION = "x.y.z"` form — it is parsed by regex.
-var RTL_VERSION = "2.1.0";
+var RTL_VERSION = "2.2.0";
 
 function __cursorRtlMain() {
     var RTL_LOG = "[Cursor RTL]";
@@ -1258,9 +1258,14 @@ function __cursorRtlMain() {
 
     var EDITOR_LINE_SAMPLE = 80;
     var editorMode = 'auto';
-    /* languageId -> mode, from cursorRtl.editorRtlByLanguage; overrides
-       editorMode for editors showing that language (issue #20). */
-    var editorModeByLanguage = {};
+    /* File name pattern -> mode, from cursorRtl.editorRtlByFile; overrides
+       editorMode for editors showing a matching file (issue #20). Patterns
+       match the file name only, case-insensitively, with * and ? as the only
+       wildcards. When several match, the one with the most literal
+       characters wins, so "CHANGELOG.md" beats "*.md". src/filePatterns.ts
+       implements the same rule for the extension host; keep them in sync. */
+    var editorFileRules = [];
+    var editorFileRulesKey = '{}';
     try {
         if (window.__cursorRtlConfig && typeof window.__cursorRtlConfig.editorRtl === 'string') {
             editorMode = window.__cursorRtlConfig.editorRtl;
@@ -1271,31 +1276,60 @@ function __cursorRtlMain() {
         return (mode === 'auto' || mode === 'always' || mode === 'off') ? mode : 'auto';
     }
 
-    function normalizeModeMap(map) {
-        var out = {};
-        if (!map || typeof map !== 'object') return out;
-        for (var lang in map) {
-            if (!Object.prototype.hasOwnProperty.call(map, lang)) continue;
-            var mode = map[lang];
-            if (mode === 'auto' || mode === 'always' || mode === 'off') {
-                out[String(lang).toLowerCase()] = mode;
-            }
+    function compileFilePattern(pattern) {
+        var source = '';
+        for (var i = 0; i < pattern.length; i++) {
+            var ch = pattern.charAt(i);
+            if (ch === '*') source += '.*';
+            else if (ch === '?') source += '.';
+            else source += ch.replace(/[.+^${}()|[\]\\\/-]/g, '\\$&');
         }
-        return out;
+        return new RegExp('^' + source + '$', 'i');
     }
 
-    /* Monaco's editor group marks the shown file's language with
-       data-mode-id on an ancestor of .monaco-editor. */
-    function getEditorLanguage(editor) {
-        var host = editor.closest('[data-mode-id]');
-        var id = host ? host.getAttribute('data-mode-id') : null;
-        return id ? id.toLowerCase() : null;
+    function buildFileRules(map) {
+        var rules = [];
+        if (!map || typeof map !== 'object') return rules;
+        var order = 0;
+        for (var pattern in map) {
+            if (!Object.prototype.hasOwnProperty.call(map, pattern)) continue;
+            var mode = map[pattern];
+            var key = String(pattern).trim();
+            if (!key || (mode !== 'auto' && mode !== 'always' && mode !== 'off')) continue;
+            var literal = key.replace(/[*?]/g, '').length;
+            rules.push({
+                mode: mode,
+                literal: literal,
+                wildcards: key.length - literal,
+                order: order++,
+                re: compileFilePattern(key)
+            });
+        }
+        rules.sort(function(a, b) {
+            return (b.literal - a.literal) || (a.wildcards - b.wildcards) || (a.order - b.order);
+        });
+        return rules;
+    }
+
+    /* Monaco's code editor widget sets data-uri (the model URI) on its
+       .monaco-editor element. */
+    function getEditorFileName(editor) {
+        var uri = editor.getAttribute('data-uri');
+        if (!uri) return null;
+        var path = uri.split(/[?#]/)[0];
+        var name = path.substring(Math.max(path.lastIndexOf('/'), path.lastIndexOf(':')) + 1);
+        try { name = decodeURIComponent(name); } catch (e) {}
+        return name || null;
     }
 
     function getModeForEditor(editor) {
-        var lang = getEditorLanguage(editor);
-        if (lang && Object.prototype.hasOwnProperty.call(editorModeByLanguage, lang)) {
-            return editorModeByLanguage[lang];
+        if (editorFileRules.length) {
+            var name = getEditorFileName(editor);
+            if (name) {
+                for (var i = 0; i < editorFileRules.length; i++) {
+                    if (editorFileRules[i].re.test(name)) return editorFileRules[i].mode;
+                }
+            }
         }
         return normalizeEditorMode(editorMode);
     }
@@ -1344,12 +1378,13 @@ function __cursorRtlMain() {
         }
     }
 
-    window.__cursorRtlSetEditorMode = function(mode, byLanguage) {
+    window.__cursorRtlSetEditorMode = function(mode, byFile) {
         editorMode = normalizeEditorMode(mode);
-        if (byLanguage !== undefined) {
-            editorModeByLanguage = normalizeModeMap(byLanguage);
+        if (byFile !== undefined) {
+            editorFileRulesKey = JSON.stringify(byFile || {});
+            editorFileRules = buildFileRules(byFile);
         }
-        console.log(RTL_LOG, 'editor RTL mode:', editorMode, JSON.stringify(editorModeByLanguage));
+        console.log(RTL_LOG, 'editor RTL mode:', editorMode, editorFileRulesKey);
         scanAll();
         return editorMode;
     };
@@ -1369,9 +1404,8 @@ function __cursorRtlMain() {
                 .then(function(cfg) {
                     if (!cfg || typeof cfg.editorRtl !== 'string') return;
                     var next = normalizeEditorMode(cfg.editorRtl);
-                    var nextMap = normalizeModeMap(cfg.editorRtlByLanguage);
-                    if (next !== editorMode ||
-                        JSON.stringify(nextMap) !== JSON.stringify(editorModeByLanguage)) {
+                    var nextMap = cfg.editorRtlByFile || {};
+                    if (next !== editorMode || JSON.stringify(nextMap) !== editorFileRulesKey) {
                         window.__cursorRtlSetEditorMode(next, nextMap);
                     }
                 })

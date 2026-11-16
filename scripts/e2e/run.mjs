@@ -486,8 +486,9 @@ async function scnEditorMode() {
     } catch {
         reverts = false;
     }
-    // Per-language override (issue #20): global 'off', TypeScript 'always' →
-    // mixed.ts flips; then global 'always', TypeScript 'off' → it stays LTR.
+    // File name rules (issue #20): global 'off', '*.ts' 'always' → mixed.ts
+    // flips; then global 'always' with '*.ts' 'always' and 'MIXED.ts' 'off' →
+    // it goes LTR (the exact name beats the wildcard, case ignored).
     // Only the mixed.ts editor: with the global mode at 'always', any other
     // open editor (hebrew.md restored in another group) is RTL by design.
     const editorIsRtl = () => page.evaluate(() => {
@@ -495,23 +496,23 @@ async function scnEditorMode() {
         if (!ed) throw new Error('mixed.ts editor not found');
         return ed.getAttribute('data-cursor-rtl-dir') === 'rtl';
     });
-    settings['cursorRtl.editorRtlByLanguage'] = { typescript: 'always' };
+    settings['cursorRtl.editorRtlByFile'] = { '*.ts': 'always' };
     fs.writeFileSync(LAB_SETTINGS, JSON.stringify(settings, null, 4));
     let languageOverrideOn = true;
     try {
-        await waitFor(editorIsRtl, { timeoutMs: 15_000, label: 'typescript override flips to RTL' });
+        await waitFor(editorIsRtl, { timeoutMs: 15_000, label: '*.ts rule flips to RTL' });
     } catch {
         languageOverrideOn = false;
     }
     settings['cursorRtl.editorRtl'] = 'always';
-    settings['cursorRtl.editorRtlByLanguage'] = { typescript: 'off' };
+    settings['cursorRtl.editorRtlByFile'] = { '*.ts': 'always', 'MIXED.ts': 'off' };
     fs.writeFileSync(LAB_SETTINGS, JSON.stringify(settings, null, 4));
     let languageOverrideOff = true;
     try {
-        // The editor is RTL from the previous step; the override must turn
-        // it LTR (the global 'always' alone would keep it RTL) and keep it
+        // The editor is RTL from the previous step; the exact-name rule must
+        // turn it LTR (the global 'always' and '*.ts' would keep it RTL) and keep it
         // that way through another config poll (rtl.js polls every 5s).
-        await waitFor(async () => !(await editorIsRtl()), { timeoutMs: 20_000, label: 'typescript override back to LTR' });
+        await waitFor(async () => !(await editorIsRtl()), { timeoutMs: 20_000, label: 'MIXED.ts rule back to LTR' });
         await sleep(6_000);
         languageOverrideOff = !(await editorIsRtl());
     } catch {
@@ -519,7 +520,7 @@ async function scnEditorMode() {
     }
 
     settings['cursorRtl.editorRtl'] = 'auto';
-    delete settings['cursorRtl.editorRtlByLanguage'];
+    delete settings['cursorRtl.editorRtlByFile'];
     fs.writeFileSync(LAB_SETTINGS, JSON.stringify(settings, null, 4));
 
     await browser.close();

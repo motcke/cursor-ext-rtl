@@ -47,6 +47,14 @@ import {
 } from './actions';
 import { LEGACY_LOADER_FILENAME } from './constants';
 import { isAgentsWindowOpen, restartCursor } from './restart';
+import {
+    EditorRtlMode,
+    toEditorRtlMode,
+    getEditorRtlByFile,
+    migrateEditorRtlByLanguage,
+    checkEditorRtlByFile,
+} from './editorRtlByFile';
+import { findKey, findMatchingPattern, patternForFileName } from './filePatterns';
 
 let statusBarItem: vscode.StatusBarItem;
 let blinkInterval: ReturnType<typeof setInterval> | undefined;
@@ -179,12 +187,6 @@ async function showQuickPick(): Promise<void> {
     }
 }
 
-type EditorRtlMode = 'auto' | 'always' | 'off';
-
-function toEditorRtlMode(value: unknown): EditorRtlMode | null {
-    return value === 'auto' || value === 'always' || value === 'off' ? value : null;
-}
-
 function getEditorRtlMode(): EditorRtlMode {
     const value = vscode.workspace
         .getConfiguration('cursorRtl')
@@ -192,34 +194,18 @@ function getEditorRtlMode(): EditorRtlMode {
     return toEditorRtlMode(value) ?? 'auto';
 }
 
-// cursorRtl.editorRtlByLanguage: { languageId: mode }. Keys are lowercased
-// (language IDs are) and invalid values dropped.
-function getEditorRtlByLanguage(): Record<string, EditorRtlMode> {
-    const raw = vscode.workspace
-        .getConfiguration('cursorRtl')
-        .get<Record<string, unknown>>('editorRtlByLanguage', {});
-    const result: Record<string, EditorRtlMode> = {};
-    for (const [lang, value] of Object.entries(raw ?? {})) {
-        const mode = toEditorRtlMode(value);
-        const key = lang.trim().toLowerCase();
-        if (mode && key) {
-            result[key] = mode;
-        }
-    }
-    return result;
-}
-
 // Persist the editor-RTL modes where the injected renderer script can fetch
 // them (out/vs/workbench/cursor-rtl-config.json). rtl.js polls this file, so
 // changes apply live without a reload. The renderer resolves each editor's
-// mode from its language: editorRtlByLanguage first, then editorRtl.
+// mode from its file name: the best editorRtlByFile pattern first, then
+// editorRtl.
 function writeEditorConfig(): void {
     try {
         fs.writeFileSync(
             getConfigPath(),
             JSON.stringify({
                 editorRtl: getEditorRtlMode(),
-                editorRtlByLanguage: getEditorRtlByLanguage(),
+                editorRtlByFile: getEditorRtlByFile(),
             })
         );
     } catch {
@@ -235,17 +221,55 @@ const EDITOR_MODE_LABELS: Record<EditorRtlMode, { icon: string; label: string }>
 
 interface EditorRtlPick extends vscode.QuickPickItem {
     mode?: EditorRtlMode | 'default';
-    languageId?: string;
+    pattern?: string;
 }
 
-// One list: the three global modes, then (when a file is open) the same
-// choices for the current file's language only, so a per-language override
-// never needs settings.json.
+// The open file's name, for the "Only *.ext files" choices. Untitled buffers
+// and output panes have no name worth a rule.
+function getActiveFileName(): string | undefined {
+    const uri = vscode.window.activeTextEditor?.document.uri;
+    if (!uri || uri.scheme === 'untitled' || uri.scheme === 'output') {
+        return undefined;
+    }
+    return path.posix.basename(uri.path) || undefined;
+}
+
+// Adds, changes or removes one editorRtlByFile rule. User settings get the
+// change; a workspace that defines the same pattern gets it too, or the
+// workspace value would keep deciding.
+async function setFileRule(pattern: string, mode: EditorRtlMode | undefined): Promise<void> {
+    const config = vscode.workspace.getConfiguration('cursorRtl');
+    const inspected = config.inspect<Record<string, unknown>>('editorRtlByFile');
+    const scopes: Array<[vscode.ConfigurationTarget, Record<string, unknown> | undefined]> = [
+        [vscode.ConfigurationTarget.Global, inspected?.globalValue],
+        [vscode.ConfigurationTarget.Workspace, inspected?.workspaceValue],
+    ];
+    for (const [target, value] of scopes) {
+        const existing = value ? findKey(value, pattern) : undefined;
+        if (target !== vscode.ConfigurationTarget.Global && !existing) {
+            continue;
+        }
+        const next: Record<string, unknown> = { ...(value ?? {}) };
+        if (existing) {
+            delete next[existing];
+        }
+        if (mode) {
+            next[existing ?? pattern] = mode;
+        }
+        await config.update('editorRtlByFile', next, target);
+    }
+}
+
+// One list: the three modes for all files, then (when a file is open) the
+// same choices for files like it ("*.prisma"), so a rule never needs
+// settings.json. The title says which rule decides the open file now.
 async function setEditorRtlCommand(): Promise<void> {
     const current = getEditorRtlMode();
-    const byLanguage = getEditorRtlByLanguage();
-    const languageId = vscode.window.activeTextEditor?.document.languageId;
-    const languageMode = languageId ? byLanguage[languageId] : undefined;
+    const byFile = getEditorRtlByFile();
+    const fileName = getActiveFileName();
+    const pattern = fileName ? patternForFileName(fileName) : undefined;
+    const patternKey = pattern ? findKey(byFile, pattern) : undefined;
+    const patternMode = patternKey ? byFile[patternKey] : undefined;
 
     const items: EditorRtlPick[] = [
         { label: 'All files', kind: vscode.QuickPickItemKind.Separator },
@@ -253,45 +277,48 @@ async function setEditorRtlCommand(): Promise<void> {
         { ...modeItem('always', 'Force every code editor right-to-left', current), mode: 'always' },
         { ...modeItem('off', "Never change the code editor's direction", current), mode: 'off' },
     ];
-    if (languageId) {
+    if (pattern) {
         items.push(
-            { label: `Only "${languageId}" files`, kind: vscode.QuickPickItemKind.Separator },
-            { ...modeItem('auto', `Auto for ${languageId} files`, languageMode), mode: 'auto', languageId },
-            { ...modeItem('always', `Always RTL for ${languageId} files`, languageMode), mode: 'always', languageId },
-            { ...modeItem('off', `Off for ${languageId} files`, languageMode), mode: 'off', languageId },
+            { label: `Only ${pattern} files`, kind: vscode.QuickPickItemKind.Separator },
+            { ...modeItem('auto', `Auto for ${pattern} files`, patternMode), mode: 'auto', pattern },
+            { ...modeItem('always', `Always RTL for ${pattern} files`, patternMode), mode: 'always', pattern },
+            { ...modeItem('off', `Off for ${pattern} files`, patternMode), mode: 'off', pattern },
         );
-        if (languageMode) {
+        if (patternKey) {
             items.push({
                 label: '$(discard) Same as all files',
-                description: `Remove the ${languageId} setting`,
+                description: `Remove the ${patternKey} rule`,
                 mode: 'default',
-                languageId,
+                pattern,
             });
         }
     }
 
-    const picked = await vscode.window.showQuickPick(items, {
-        placeHolder: languageMode
-            ? `Code editor RTL direction (all files: ${current}, ${languageId}: ${languageMode})`
-            : `Code editor RTL direction (current: ${current})`,
-    });
+    let placeHolder = `Code editor RTL direction (all files: ${current})`;
+    if (fileName) {
+        const rule = findMatchingPattern(Object.keys(byFile), fileName);
+        placeHolder = rule
+            ? `${fileName}: ${byFile[rule]}, from the ${rule} rule (all files: ${current})`
+            : `${fileName}: ${current}, from the all-files setting`;
+    }
+
+    const picked = await vscode.window.showQuickPick(items, { placeHolder });
     if (!picked?.mode) {
         return;
     }
 
-    const config = vscode.workspace.getConfiguration('cursorRtl');
-    if (picked.languageId) {
-        const next: Record<string, string> = { ...byLanguage };
-        if (picked.mode === 'default') {
-            delete next[picked.languageId];
-        } else {
-            next[picked.languageId] = picked.mode;
-        }
-        await config.update('editorRtlByLanguage', next, vscode.ConfigurationTarget.Global);
-        action('editor_rtl_language_set', { language: picked.languageId, mode: picked.mode });
+    if (picked.pattern) {
+        await setFileRule(picked.pattern, picked.mode === 'default' ? undefined : picked.mode);
+        action('editor_rtl_pattern_set', {
+            // An extension-less file's exact name may be private; send the
+            // kind only.
+            pattern: picked.pattern.startsWith('*.') ? picked.pattern : 'exact-name',
+            mode: picked.mode,
+        });
         return;
     }
     if (picked.mode !== 'default') {
+        const config = vscode.workspace.getConfiguration('cursorRtl');
         await config.update('editorRtl', picked.mode, vscode.ConfigurationTarget.Global);
         action('editor_rtl_set', { mode: picked.mode });
     }
@@ -1225,14 +1252,26 @@ export function activate(context: vscode.ExtensionContext): { extendMarkdownIt(m
         }
         if (
             e.affectsConfiguration('cursorRtl.editorRtl') ||
-            e.affectsConfiguration('cursorRtl.editorRtlByLanguage')
+            e.affectsConfiguration('cursorRtl.editorRtlByFile')
         ) {
             writeEditorConfig();
+        }
+        if (e.affectsConfiguration('cursorRtl.editorRtlByFile')) {
+            void checkEditorRtlByFile(context);
+        }
+        if (e.affectsConfiguration('cursorRtl.editorRtlByLanguage')) {
+            void migrateEditorRtlByLanguage();
         }
         if (e.affectsConfiguration('cursorRtl.markdownPreview')) {
             void vscode.commands.executeCommand('markdown.preview.refresh');
         }
     }, null, context.subscriptions);
+
+    // 2.1.0's editorRtlByLanguage becomes editorRtlByFile patterns; then flag
+    // any key that won't match what its author meant.
+    void migrateEditorRtlByLanguage()
+        .then(() => checkEditorRtlByFile(context))
+        .catch(() => undefined);
 
     // installSource rides on every event as a common property (set in
     // initActions above), ext_start included. elevation joins the common
