@@ -52,6 +52,8 @@ export function init(opts?: InitOptions): void {
         // Statsbeat must be disabled via env before the client initializes.
         process.env.APPLICATION_INSIGHTS_NO_STATSBEAT = 'true';
         process.env.APPLICATIONINSIGHTS_STATSBEAT_DISABLED = 'true';
+        // Customer-facing SDK Stats (exporter 1.0.0-beta.33+) are metrics too.
+        process.env.APPLICATIONINSIGHTS_SDKSTATS_DISABLED = 'true';
         _client = new TelemetryClient(cs);
         // applicationinsights v3 auto-instruments the whole extension-host
         // process (Cursor's own spans, HTTP calls, and uncaught exceptions),
