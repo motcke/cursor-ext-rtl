@@ -1,4 +1,4 @@
-import { getTextDir, TextDir } from './textDirection';
+import { getTextDir, getTextDirOrNull, TextDir } from './textDirection';
 
 // Structural types for the slice of markdown-it we touch — the real
 // markdown-it instance is provided at runtime by the built-in
@@ -30,7 +30,7 @@ function findListItemDir(tokens: MdToken[], openIndex: number): TextDir | null {
             return null;
         }
         if (t.type === 'inline' && t.content.trim()) {
-            return getTextDir(t.content);
+            return getTextDirOrNull(t.content);
         }
     }
     return null;
@@ -72,8 +72,9 @@ function findTableDir(tokens: MdToken[], openIndex: number): TextDir | null {
             break;
         }
         if (t.type === 'inline' && t.content.trim()) {
-            if (getTextDir(t.content) === 'rtl') rtl++;
-            else ltr++;
+            const dir = getTextDirOrNull(t.content);
+            if (dir === 'rtl') rtl++;
+            else if (dir === 'ltr') ltr++;
         }
     }
     if (rtl === 0 && ltr === 0) return null;

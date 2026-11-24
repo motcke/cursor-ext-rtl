@@ -4,6 +4,7 @@ docs/**
 src/**
 node_modules/**
 scripts/**
+test/**
 visual/**
 .cursor/**
 .markup/**

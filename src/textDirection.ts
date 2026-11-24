@@ -15,19 +15,24 @@ export type TextDir = 'ltr' | 'rtl';
 
 // Identifiers, paths, ALL-CAPS and camelCase tokens are usually code and
 // shouldn't pull a Hebrew/Arabic sentence back to LTR as hard as prose words.
-function getLtrTokenWeight(token: string): number {
+// Trailing sentence/label punctuation (".", ":", "-", "/") is stripped first so
+// ordinary words like "header." or "Note:" keep full weight.
+function getLtrTokenWeight(rawToken: string): number {
+    const token = rawToken.replace(/[._/\\:-]+$/, '');
+    if (!token) return 0;
     if (/[._/\\:]/.test(token)) return 0.25;
     if (/^[A-Z0-9-]{2,}$/.test(token)) return 0.5;
     if (/^[a-z]+[A-Z]/.test(token)) return 0.5;
     return 1;
 }
 
-// Both sides are counted in words: each Hebrew/Arabic word scores 2, each
-// English word 1 (less for code-like tokens).
-export function getTextDir(text: string): TextDir {
+// Returns null when the text has neither RTL words nor LTR tokens (empty,
+// numbers, punctuation) so majority voters can skip neutral items.
+export function getTextDirOrNull(text: string): TextDir | null {
     const value = text || '';
     const rtlWords = value.match(RTL_WORD) || [];
     const ltrTokens = value.match(LTR_TOKEN) || [];
+    if (rtlWords.length === 0 && ltrTokens.length === 0) return null;
     if (rtlWords.length === 0) return 'ltr';
     if (ltrTokens.length === 0) return 'rtl';
 
@@ -36,5 +41,11 @@ export function getTextDir(text: string): TextDir {
     for (const token of ltrTokens) {
         ltrScore += getLtrTokenWeight(token);
     }
-    return rtlScore >= ltrScore ? 'rtl' : 'ltr';
+    return rtlScore > ltrScore ? 'rtl' : 'ltr';
+}
+
+// Both sides are counted in words: each Hebrew/Arabic word scores 2, each
+// English word 1 (less for code-like tokens). Exact ties stay LTR.
+export function getTextDir(text: string): TextDir {
+    return getTextDirOrNull(text) ?? 'ltr';
 }

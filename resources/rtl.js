@@ -1,7 +1,7 @@
 // Machine-readable version marker, compared by the extension between its
 // bundled copy and the installed cursor-rtl.js to detect a needed refresh.
 // Keep the exact `var RTL_VERSION = "x.y.z"` form — it is parsed by regex.
-var RTL_VERSION = "2.2.0";
+var RTL_VERSION = "2.2.2";
 
 function __cursorRtlMain() {
     var RTL_LOG = "[Cursor RTL]";
@@ -172,7 +172,13 @@ function __cursorRtlMain() {
         pre,
         .markdown-code-outer-container,
         .cursor-code-block-content,
-        .monaco-editor {
+        .composer-rendered-message .monaco-editor,
+        .markdown-root .monaco-editor,
+        .markdown-section .monaco-editor,
+        .markdown-code-outer-container .monaco-editor,
+        .cursor-code-block-content .monaco-editor,
+        .plan-editor .monaco-editor,
+        .ui-plan-editor .monaco-editor {
             direction: ltr !important;
             text-align: left !important;
             unicode-bidi: plaintext !important;
@@ -941,7 +947,11 @@ function __cursorRtlMain() {
         return text.match(pattern) || [];
     }
 
-    function getLtrTokenWeight(token) {
+    var LTR_TOKEN = /[A-Za-z][A-Za-z0-9._/\\:-]*/g;
+
+    function getLtrTokenWeight(rawToken) {
+        var token = rawToken.replace(/[._/\\:-]+$/, '');
+        if (!token) return 0;
         if (/[._/\\:]/.test(token)) return 0.25;
         if (/^[A-Z0-9-]{2,}$/.test(token)) return 0.5;
         if (/^[a-z]+[A-Z]/.test(token)) return 0.5;
@@ -952,11 +962,13 @@ function __cursorRtlMain() {
        1 for an English word (less for code-like tokens), so a Hebrew sentence
        full of technical terms stays RTL. Counting RTL letters instead made a
        two-word Hebrew or Arabic tail outweigh a whole English sentence
-       (issue #18). */
-    function getTextDir(text) {
+       (issue #18). Exact ties stay LTR; neutral text (no letters) returns null
+       so majority voters can skip empty/symbol items. */
+    function getTextDirOrNull(text) {
         var value = text || '';
         var rtlWords = getMatches(value, RTL_WORD);
-        var ltrTokens = getMatches(value, /[A-Za-z][A-Za-z0-9._/\\:-]*/g);
+        var ltrTokens = getMatches(value, LTR_TOKEN);
+        if (rtlWords.length === 0 && ltrTokens.length === 0) return null;
         if (rtlWords.length === 0) return 'ltr';
         if (ltrTokens.length === 0) return 'rtl';
 
@@ -965,16 +977,20 @@ function __cursorRtlMain() {
         for (var i = 0; i < ltrTokens.length; i++) {
             ltrScore += getLtrTokenWeight(ltrTokens[i]);
         }
-        return rtlScore >= ltrScore ? 'rtl' : 'ltr';
+        return rtlScore > ltrScore ? 'rtl' : 'ltr';
+    }
+
+    function getTextDir(text) {
+        return getTextDirOrNull(text) || 'ltr';
     }
 
     function getMajorityDir(els) {
         var rtlCount = 0;
         var ltrCount = 0;
         for (var i = 0; i < els.length; i++) {
-            var dir = getTextDir(els[i].textContent || '');
+            var dir = getTextDirOrNull(els[i].textContent || '');
             if (dir === 'rtl') rtlCount++;
-            else ltrCount++;
+            else if (dir === 'ltr') ltrCount++;
         }
         return rtlCount > ltrCount ? 'rtl' : 'ltr';
     }
@@ -1341,15 +1357,68 @@ function __cursorRtlMain() {
         return !editor.closest(EDITOR_EXCLUDE_SELECTOR);
     }
 
+    var EDITOR_MIN_RTL_WORDS = 5;
+    var EDITOR_RTL_ENTER_RATIO = 0.65;
+    var EDITOR_RTL_EXIT_RATIO = 0.5;
+
+    /* Lines that look like source code containing string literals (issue #22):
+       property/JSON entries (`title: '...'`, `"save": "..."`, `[K]: ...`),
+       declarations/statements (`const`, `export`, `return`, ...), or
+       assignments/arrows/calls before a quote (`x = '...'`, `=> \`...\``,
+       `t('...')`). Plain prose that merely quotes a term in parentheses
+       (`דוגמה ("hello")`) or starts with an English word (`Cursor הוא \`code\``)
+       does not match. */
+    function isCodeStringLine(line) {
+        var t = line.trim();
+        if (!t || !/['"`]/.test(t)) return false;
+        if (/^(?:['"]?[A-Za-z_$][\w$.-]*['"]?\s*:|\[[^\]]+\]\s*:)/.test(t)) return true;
+        if (/^(?:export|import|const|let|var|return|case|throw|default)\b/.test(t)) return true;
+        if (/(?:[A-Za-z0-9_$)\]]\s*=\s*|=>\s*|[A-Za-z0-9_$]\(\s*)['"`]/.test(t)) return true;
+        return false;
+    }
+
+    /* Weighted content-volume detection for Monaco editors with hysteresis
+       (issue #22): sums RTL vs LTR weights across visible non-empty lines,
+       uses balanced 1:1 weights on code-string lines (no 2x Hebrew boost and
+       no identifier discount), and requires a clear RTL share (>= 65% and at
+       least 5 RTL words) to enter RTL while staying RTL until below 50% so
+       scrolling across mixed regions does not flicker. */
     function detectEditorDir(editor) {
         var lines = editor.querySelectorAll('.view-line');
         if (!lines.length) return 'ltr';
-        var sample = [];
         var limit = Math.min(lines.length, EDITOR_LINE_SAMPLE);
+        var rtlTotal = 0;
+        var ltrTotal = 0;
+        var rtlWordCount = 0;
         for (var i = 0; i < limit; i++) {
-            sample.push(lines[i]);
+            var text = lines[i].textContent || '';
+            var rtlWords = getMatches(text, RTL_WORD);
+            var ltrTokens = getMatches(text, LTR_TOKEN);
+            if (rtlWords.length === 0 && ltrTokens.length === 0) continue;
+            rtlWordCount += rtlWords.length;
+            if (isCodeStringLine(text)) {
+                rtlTotal += rtlWords.length;
+                for (var j = 0; j < ltrTokens.length; j++) {
+                    if (ltrTokens[j].replace(/[._/\\:-]+$/, '')) ltrTotal += 1;
+                }
+            } else {
+                rtlTotal += rtlWords.length * 2;
+                for (var k = 0; k < ltrTokens.length; k++) {
+                    ltrTotal += getLtrTokenWeight(ltrTokens[k]);
+                }
+            }
         }
-        return getMajorityDir(sample);
+        if (rtlWordCount === 0) return 'ltr';
+        var total = rtlTotal + ltrTotal;
+        if (total === 0) return 'ltr';
+        var ratio = rtlTotal / total;
+        var isCurrentlyRtl = editor.getAttribute('data-cursor-rtl-dir') === 'rtl';
+        if (isCurrentlyRtl) {
+            return ratio >= EDITOR_RTL_EXIT_RATIO ? 'rtl' : 'ltr';
+        }
+        return (rtlWordCount >= EDITOR_MIN_RTL_WORDS && ratio >= EDITOR_RTL_ENTER_RATIO)
+            ? 'rtl'
+            : 'ltr';
     }
 
     function setEditorDir(editor, dir) {
