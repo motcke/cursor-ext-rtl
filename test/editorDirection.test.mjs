@@ -116,6 +116,11 @@ describe('detectEditorDir — RTL documents, heavy Hebrew & hysteresis (RED → 
         rt.setEditorMode('auto', {});
     });
 
+    it('flips a brand-new pure-Hebrew Markdown/text note to RTL on the first word', () => {
+        assert.equal(checkEditorDir('# שלום', 'file:///workspace/notes.md'), 'rtl');
+        assert.equal(checkEditorDir('שלום עולם', 'untitled:Untitled-1'), 'rtl');
+    });
+
     it('flips hebrew.md fixture to RTL', () => {
         const hebrewMd = fs.readFileSync(path.join(REPO_ROOT, 'scripts/lab/fixtures/hebrew.md'), 'utf-8');
         assert.equal(checkEditorDir(hebrewMd, 'file:///workspace/hebrew.md'), 'rtl');
@@ -205,7 +210,10 @@ describe('detectEditorDir — RTL documents, heavy Hebrew & hysteresis (RED → 
         assert.equal(checkEditorDir(arabicMd, 'file:///workspace/README.ar.md'), 'rtl');
     });
 
-    it('flips a dictionary filled with long Hebrew prose paragraphs to RTL', () => {
+    it('keeps mixed.ts (code with Hebrew comments) and heavy Hebrew TS dictionaries LTR under global auto', () => {
+        const mixedTs = fs.readFileSync(path.join(REPO_ROOT, 'scripts/lab/fixtures/mixed.ts'), 'utf-8');
+        assert.equal(checkEditorDir(mixedTs, 'file:///workspace/mixed.ts'), 'ltr');
+
         const heavyHebrew = [
             'export const Dictionary = {',
             "  welcome: 'ברוכים הבאים למערכת ניהול ההזמנות והפניות שלנו',",
@@ -214,22 +222,26 @@ describe('detectEditorDir — RTL documents, heavy Hebrew & hysteresis (RED → 
             "  footer: 'כל הזכויות שמורות למערכת ניהול הפניות',",
             '};',
         ].join('\n');
+        assert.equal(checkEditorDir(heavyHebrew, 'file:///workspace/heavy.ts'), 'ltr');
+
+        // Explicit editorRtlByFile opt-in to 'auto' still enables content detection on a code file
+        rt.setEditorMode('auto', { 'heavy.ts': 'auto' });
         assert.equal(checkEditorDir(heavyHebrew, 'file:///workspace/heavy.ts'), 'rtl');
+        rt.setEditorMode('auto', {});
     });
 
     it('applies hysteresis between 50% and 65% so scrolling does not flicker direction', () => {
-        // Borderline content: ~58% RTL share (15 RTL vs 11 LTR on code-string lines)
+        // Borderline content: ~58% RTL share in a prose/text file (15 RTL vs 11 LTR)
         const borderlineLines = [
-            'export const Dictionary = {',
-            "  title: 'כותרת ראשית',",
-            "  subtitle: 'תת כותרת',",
-            "  cancelBtn: 'ביטול',",
-            "  submitBtn: 'שליחה',",
-            "  saveChanges: 'שמור שינויים',",
-            "  backHome: 'חזרה לדף הבית',",
-            "  errorTitle: 'שגיאה בטעינה',",
-            "  loadingText: 'טוען נתונים...',",
-            '};',
+            'Dictionary labels overview',
+            'title: "כותרת ראשית"',
+            'subtitle: "תת כותרת"',
+            'cancelBtn: "ביטול"',
+            'submitBtn: "שליחה"',
+            'saveChanges: "שמור שינויים"',
+            'backHome: "חזרה לדף הבית"',
+            'errorTitle: "שגיאה בטעינה"',
+            'loadingText: "טוען נתונים..."',
         ];
         const strongRtlLines = [
             '# מסמך בעברית מלאה',
@@ -245,7 +257,7 @@ describe('detectEditorDir — RTL documents, heavy Hebrew & hysteresis (RED → 
 
         // 1) Starting from LTR -> scrolling into borderline (~58%) stays LTR
         rt.clearBody();
-        const editor = rt.createMonacoEditor(strongLtrLines, { uri: 'file:///workspace/doc.ts' });
+        const editor = rt.createMonacoEditor(strongLtrLines, { uri: 'file:///workspace/notes.txt' });
         rt.scanAll();
         assert.equal(editor.getAttribute('data-cursor-rtl-dir'), null);
 
@@ -300,22 +312,27 @@ describe('editorRtlByFile rules, exclusions & CSS hygiene (RED → GREEN)', () =
         rt.setEditorMode('auto', {});
     });
 
-    it('does not apply a global unicode-bidi: plaintext rule to standalone .monaco-editor', () => {
-        const css = rt.getMainStyleText();
-        // Match any CSS rule whose selector list contains a bare `.monaco-editor`
-        // (not scoped inside chat/markdown/code containers and not [data-cursor-rtl-dir="rtl"])
-        // and sets unicode-bidi: plaintext.
+    it('keeps .monaco-editor anchored to LTR without setting unicode-bidi: plaintext globally', () => {
+        const css = rt.getMainStyleText().replace(/\/\*[\s\S]*?\*\//g, '');
         const blocks = css.match(/[^{}]+\{[^}]*\}/g) || [];
-        const offending = blocks.filter((block) => {
+        const offendingBidi = blocks.filter((block) => {
             const [selectorPart, bodyPart] = block.split('{');
             if (!/unicode-bidi\s*:\s*plaintext/i.test(bodyPart)) return false;
             const selectors = selectorPart.split(',').map((s) => s.trim());
             return selectors.some((s) => s === '.monaco-editor');
         });
         assert.equal(
-            offending.length,
+            offendingBidi.length,
             0,
-            `Found global bare .monaco-editor unicode-bidi: plaintext rule:\n${offending.join('\n')}`
+            `Found global bare .monaco-editor unicode-bidi: plaintext rule:\n${offendingBidi.join('\n')}`
         );
+
+        const ltrAnchor = blocks.filter((block) => {
+            const [selectorPart, bodyPart] = block.split('{');
+            if (!/direction\s*:\s*ltr\s*!important/i.test(bodyPart)) return false;
+            const selectors = selectorPart.split(',').map((s) => s.trim());
+            return selectors.some((s) => s === '.monaco-editor');
+        });
+        assert.ok(ltrAnchor.length >= 1, 'Expected bare .monaco-editor to remain anchored to direction: ltr !important');
     });
 });

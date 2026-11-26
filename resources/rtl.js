@@ -1,7 +1,7 @@
 // Machine-readable version marker, compared by the extension between its
 // bundled copy and the installed cursor-rtl.js to detect a needed refresh.
 // Keep the exact `var RTL_VERSION = "x.y.z"` form — it is parsed by regex.
-var RTL_VERSION = "2.2.2";
+var RTL_VERSION = "2.2.3";
 
 function __cursorRtlMain() {
     var RTL_LOG = "[Cursor RTL]";
@@ -171,17 +171,18 @@ function __cursorRtlMain() {
         code,
         pre,
         .markdown-code-outer-container,
-        .cursor-code-block-content,
-        .composer-rendered-message .monaco-editor,
-        .markdown-root .monaco-editor,
-        .markdown-section .monaco-editor,
-        .markdown-code-outer-container .monaco-editor,
-        .cursor-code-block-content .monaco-editor,
-        .plan-editor .monaco-editor,
-        .ui-plan-editor .monaco-editor {
+        .cursor-code-block-content {
             direction: ltr !important;
             text-align: left !important;
             unicode-bidi: plaintext !important;
+        }
+
+        /* Keep Monaco editors (both embedded code blocks inside RTL containers
+           and standalone editor chrome/widgets) anchored to LTR without adding
+           unicode-bidi: plaintext on .monaco-editor itself. */
+        .monaco-editor {
+            direction: ltr !important;
+            text-align: left !important;
         }
 
         .markdown-root code,
@@ -1343,11 +1344,37 @@ function __cursorRtlMain() {
             var name = getEditorFileName(editor);
             if (name) {
                 for (var i = 0; i < editorFileRules.length; i++) {
-                    if (editorFileRules[i].re.test(name)) return editorFileRules[i].mode;
+                    if (editorFileRules[i].re.test(name)) {
+                        return { mode: editorFileRules[i].mode, explicit: true };
+                    }
                 }
             }
         }
-        return normalizeEditorMode(editorMode);
+        return { mode: normalizeEditorMode(editorMode), explicit: false };
+    }
+
+    /* Source-code and structured-config extensions stay LTR under the global
+       'auto' setting so Hebrew comments or string literals never flip code
+       layout or break Monaco's Ctrl+Click hit-testing (issue #22). Users can
+       still opt any file or extension into 'auto' or 'always' explicitly via
+       cursorRtl.editorRtlByFile. */
+    var CODE_FILE_EXTENSIONS = /^(?:ts|tsx|mts|cts|js|jsx|mjs|cjs|json|jsonc|json5|prisma|py|pyw|pyi|java|kt|kts|cs|fs|go|rs|rb|php|c|h|cc|cpp|cxx|hpp|hh|swift|dart|scala|groovy|lua|pl|pm|r|m|mm|zig|ex|exs|erl|clj|cljs|hs|ml|mli|vue|svelte|astro|css|scss|sass|less|styl|html|htm|xml|svg|xhtml|sql|graphql|gql|sh|bash|zsh|fish|ps1|psm1|psd1|bat|cmd|yml|yaml|toml|ini|cfg|conf|env|tf|tfvars|hcl|gradle|cmake|mk|proto|thrift|avsc|lock)$/i;
+
+    function isCodeFileName(name) {
+        if (!name) return false;
+        var lower = name.toLowerCase();
+        if (
+            lower === 'dockerfile' ||
+            lower === 'makefile' ||
+            lower === 'jenkinsfile' ||
+            lower === 'vagrantfile' ||
+            lower === 'cmakelists.txt'
+        ) {
+            return true;
+        }
+        var dot = lower.lastIndexOf('.');
+        if (dot <= 0 || dot === lower.length - 1) return false;
+        return CODE_FILE_EXTENSIONS.test(lower.slice(dot + 1));
     }
 
     function isFileEditor(editor) {
@@ -1416,6 +1443,10 @@ function __cursorRtlMain() {
         if (isCurrentlyRtl) {
             return ratio >= EDITOR_RTL_EXIT_RATIO ? 'rtl' : 'ltr';
         }
+        // Pure-RTL prose files (no LTR tokens at all, e.g. a brand-new note
+        // starting with "# שלום") flip to RTL immediately on the first word;
+        // mixed files need at least EDITOR_MIN_RTL_WORDS and >= 65% RTL weight.
+        if (ltrTotal === 0) return 'rtl';
         return (rtlWordCount >= EDITOR_MIN_RTL_WORDS && ratio >= EDITOR_RTL_ENTER_RATIO)
             ? 'rtl'
             : 'ltr';
@@ -1436,8 +1467,13 @@ function __cursorRtlMain() {
         for (var i = 0; i < editors.length; i++) {
             var editor = editors[i];
             try {
-                var mode = getModeForEditor(editor);
+                var resolved = getModeForEditor(editor);
+                var mode = resolved.mode;
                 if (mode === 'off' || !isFileEditor(editor)) {
+                    setEditorDir(editor, 'ltr');
+                    continue;
+                }
+                if (mode === 'auto' && !resolved.explicit && isCodeFileName(getEditorFileName(editor))) {
                     setEditorDir(editor, 'ltr');
                     continue;
                 }
